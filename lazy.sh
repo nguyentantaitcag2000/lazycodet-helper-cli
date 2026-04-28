@@ -1,42 +1,43 @@
 #!/bin/bash
 
-# URL dẫn tới file source code của bạn trên GitHub
+# URL to the raw source on GitHub
 REPO_URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/lazy.sh"
 INSTALL_PATH="/usr/local/bin/lazy"
 
 case "$1" in
     "branch.history")
-        # 1. Kiểm tra xem có phải thư mục Git không
+        # 1. Check if the current directory is a Git repository
         if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-            echo "❌ Lỗi: Thư mục này không phải là một Git repository."
+            echo "Error: This directory is not a Git repository."
             exit 1
         fi
 
-        # 2. Lấy dữ liệu và lưu vào một biến tạm để kiểm tra
-        # Dùng GIT_PAGER=cat để tránh xung đột với cấu hình pager cá nhân
+        # 2. Fetch data and store it in a variable
         data=$(GIT_PAGER=cat git reflog show --date=format:'%Y-%m-%d %H:%M:%S' | \
                grep 'checkout: moving from' | \
                awk -F' ' '{date=$2" "$3; for(i=1;i<=NF;i++) if($i=="to") {print "["date"] - "$ (i+1); next}}' | \
                uniq)
 
-        # 3. Kiểm tra xem biến data có rỗng không
+        # 3. Check if the history is empty
         if [ -z "$data" ]; then
-            echo "ℹ️  Thông báo: Chưa có lịch sử chuyển nhánh (checkout) nào trong project này."
+            echo "Info: No checkout history found in this repository."
         else
-            # Hiển thị dữ liệu qua less
+            # Display output via less with:
+            # -F (quit if content fits on one screen)
+            # -X (keep content on screen after exit)
             echo "$data" | less -FX
         fi
         ;;
 
     "update")
-        echo "Đang kiểm tra và cập nhật lazy tool..."
-        # Thêm biến thời gian để phá cache GitHub khi update
+        echo "Checking for updates..."
+        # Use a timestamp to bypass GitHub CDN cache
         sudo curl -sSL "${REPO_URL}?v=$(date +%s)" -o $INSTALL_PATH
         sudo chmod +x $INSTALL_PATH
-        echo "✅ Cập nhật thành công lên phiên bản mới nhất!"
+        echo "Successfully updated to the latest version!"
         ;;
 
     *)
-        echo "Sử dụng: lazy [branch.history | update]"
+        echo "Usage: lazy [branch.history | update]"
         ;;
 esac
