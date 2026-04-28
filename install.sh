@@ -3,7 +3,7 @@ echo "Đang cài đặt lazy tool..."
 
 # Tạo một biến thời gian để phá cache
 TIME_STAMP=$(date +%s)
-URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/refs/heads/main/install.sh?v=$TIME_STAMP"
+URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/refs/heads/main/lazy.sh?v=$TIME_STAMP"
 
 # Tải file
 sudo curl -f -sSL "$URL" -o /usr/local/bin/lazy
