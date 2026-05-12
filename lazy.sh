@@ -52,7 +52,8 @@ case "$1" in
 
                     print marker " " branch " | " date
                 }
-            }' | \
+            }
+            ' | \
             awk '!seen[$2]++'
         )
 
