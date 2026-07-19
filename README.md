@@ -9,39 +9,43 @@ Small Bash CLI helpers for Git workflows.
 
 ## Install
 
-### Linux / WSL
+Copy and paste into the terminal (Linux, WSL, or Git Bash):
 
 ```bash
-bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/install.sh)
 ```
 
-Installs to `/opt/lazy` and symlinks `lazy` into `/usr/local/bin` (uses `sudo`).
-
-### Git Bash (Windows)
+If process substitution is unavailable, use:
 
 ```bash
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/install.sh | bash
 ```
 
-The installer detects Git Bash / MSYS automatically and:
+The installer detects the environment automatically:
 
-- clones into `~/.lazy`
-- creates a wrapper at `~/bin/lazy` (no `sudo`)
-- appends `~/bin` to `PATH` in `~/.bashrc` if needed
+| Environment | What it does |
+|---|---|
+| **Linux / WSL** | Installs to `/opt/lazy`, symlinks `lazy` → `/usr/local/bin` (uses `sudo`) |
+| **Git Bash** | Installs to `~/.lazy`, wrapper at `~/bin/lazy`, adds `~/bin` to `PATH` in `~/.bashrc` (no `sudo`) |
 
-After install, restart Git Bash (or `source ~/.bashrc`), then:
+### After install
+
+**Linux / WSL** — run immediately:
 
 ```bash
 lazy branch.history
-lazy update
 ```
 
-#### Dependency: fzf
-
-`branch.history` needs [fzf](https://github.com/junegunn/fzf):
+**Git Bash** — reload the shell first:
 
 ```bash
-scoop install fzf
+source ~/.bashrc
+lazy branch.history
 ```
 
-Or download a release binary and put it on your `PATH`.
+### Dependency: fzf
+
+`branch.history` needs [fzf](https://github.com/junegunn/fzf).
+
+- Linux / WSL: install via your package manager, e.g. `sudo apt install fzf`
+- Git Bash (Windows): `scoop install fzf` or [download a release](https://github.com/junegunn/fzf/releases)
