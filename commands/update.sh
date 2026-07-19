@@ -1,14 +1,63 @@
 #!/bin/bash
 
-REPO_URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/lazy.sh"
-INSTALL_PATH="/usr/local/bin/lazy"
+set -e
 
-echo "Checking for updates..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/platform.sh
+source "${SCRIPT_DIR}/../lib/platform.sh"
 
-if sudo curl -f -sSL "${REPO_URL}?v=$(date +%s)" -o "$INSTALL_PATH"; then
-    sudo chmod +x "$INSTALL_PATH"
+update_linux() {
+    REPO_URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/lazy.sh"
+    INSTALL_PATH="/usr/local/bin/lazy"
+
+    echo "Checking for updates..."
+
+    if sudo curl -f -sSL "${REPO_URL}?v=$(date +%s)" -o "$INSTALL_PATH"; then
+        sudo chmod +x "$INSTALL_PATH"
+        echo "Successfully updated!"
+    else
+        echo "Update failed!"
+        exit 1
+    fi
+}
+
+refresh_git_bash_wrapper() {
+    local install_dir="$1"
+    local bin_dir
+    bin_dir="$(git_bash_bin_dir)"
+    local wrapper="${bin_dir}/lazy"
+
+    mkdir -p "$bin_dir"
+    cat > "$wrapper" <<EOF
+#!/bin/bash
+exec "${install_dir}/lazy.sh" "\$@"
+EOF
+    chmod +x "$wrapper"
+}
+
+update_git_bash() {
+    local install_dir
+    install_dir="$(git_bash_install_dir)"
+
+    echo "Checking for updates (Git Bash)..."
+
+    if [ ! -d "${install_dir}/.git" ]; then
+        echo "Error: Install not found at ${install_dir}"
+        echo "Re-run install.sh first."
+        exit 1
+    fi
+
+    git -C "$install_dir" pull --ff-only
+
+    chmod +x "$install_dir/lazy.sh"
+    chmod +x "$install_dir/commands/"*.sh
+    refresh_git_bash_wrapper "$install_dir"
+
     echo "Successfully updated!"
+}
+
+if is_git_bash; then
+    update_git_bash
 else
-    echo "Update failed!"
-    exit 1
+    update_linux
 fi
