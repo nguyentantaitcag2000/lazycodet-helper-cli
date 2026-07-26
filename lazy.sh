@@ -10,9 +10,12 @@ COMMAND="$1"
 if [ -z "$COMMAND" ]; then
     echo "Usage:"
     echo "  lazy branch.history"
+    echo "  lazy kill <port>"
     echo "  lazy update"
     exit 1
 fi
+
+shift
 
 COMMAND_FILE="$COMMAND_DIR/$COMMAND.sh"
 
@@ -21,4 +24,4 @@ if [ ! -f "$COMMAND_FILE" ]; then
     exit 1
 fi
 
-bash "$COMMAND_FILE"
+bash "$COMMAND_FILE" "$@"

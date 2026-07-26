@@ -7,18 +7,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/platform.sh"
 
 update_linux() {
-    REPO_URL="https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/lazy.sh"
-    INSTALL_PATH="/usr/local/bin/lazy"
+    local install_dir="/opt/lazy"
 
     echo "Checking for updates..."
 
-    if sudo curl -f -sSL "${REPO_URL}?v=$(date +%s)" -o "$INSTALL_PATH"; then
-        sudo chmod +x "$INSTALL_PATH"
-        echo "Successfully updated!"
-    else
-        echo "Update failed!"
+    if [ ! -d "${install_dir}/.git" ]; then
+        echo "Error: Install not found at ${install_dir}"
+        echo "Re-run install.sh first."
         exit 1
     fi
+
+    sudo git -C "$install_dir" pull --ff-only
+
+    sudo chmod +x "$install_dir/lazy.sh"
+    sudo chmod +x "$install_dir/commands/"*.sh
+    sudo ln -sf "$install_dir/lazy.sh" /usr/local/bin/lazy
+
+    echo "Successfully updated!"
 }
 
 refresh_git_bash_wrapper() {

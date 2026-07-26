@@ -42,6 +42,7 @@ install_linux() {
     echo "Installation successful!"
     echo "Run:"
     echo "  lazy branch.history"
+    echo "  lazy kill <port>"
 }
 
 ensure_git_bash_path() {
@@ -114,6 +115,7 @@ EOF
     echo ""
     echo "Run:"
     echo "  lazy branch.history"
+    echo "  lazy kill <port>"
     echo "  lazy update"
 }
 

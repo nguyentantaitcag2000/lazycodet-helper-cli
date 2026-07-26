@@ -5,7 +5,31 @@ Small Bash CLI helpers for Git workflows.
 ## Commands
 
 - `lazy branch.history` — interactive checkout history from the reflog (requires `fzf`)
+- `lazy kill <port>` — list the processes listening on a port and kill them after confirmation
 - `lazy update` — update the installed CLI
+
+### `lazy kill`
+
+```bash
+lazy kill 3000        # list processes on port 3000, then ask before killing
+lazy kill 3000 -y     # skip the confirmation prompt
+```
+
+Example:
+
+```
+Processes on port 3000:
+
+  PID      NAME
+  17020    node
+
+Kill 1 process(es) on port 3000? [y/N] y
+Killed 17020
+
+Port 3000 is free.
+```
+
+On Linux it uses `lsof`, falling back to `ss`, `fuser`, or `netstat`, and sends `SIGTERM` before `SIGKILL`. On Git Bash it uses `netstat`/`tasklist`/`taskkill`.
 
 ## Install
 
