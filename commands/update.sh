@@ -6,6 +6,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/platform.sh
 source "${SCRIPT_DIR}/../lib/platform.sh"
 
+# Sync an install checkout to the matching origin branch, discarding local edits.
+# Install dirs are not working copies — manual tweaks must not block updates.
+sync_install_repo() {
+    local install_dir="$1"
+    local use_sudo="${2:-0}"
+    local branch
+    local target
+
+    if [ "$use_sudo" -eq 1 ]; then
+        sudo git -C "$install_dir" fetch --prune origin
+        branch="$(sudo git -C "$install_dir" rev-parse --abbrev-ref HEAD)"
+        if [ "$branch" = "HEAD" ]; then
+            target="origin/main"
+        else
+            target="origin/${branch}"
+        fi
+        sudo git -C "$install_dir" reset --hard "$target"
+        sudo git -C "$install_dir" clean -fd
+    else
+        git -C "$install_dir" fetch --prune origin
+        branch="$(git -C "$install_dir" rev-parse --abbrev-ref HEAD)"
+        if [ "$branch" = "HEAD" ]; then
+            target="origin/main"
+        else
+            target="origin/${branch}"
+        fi
+        git -C "$install_dir" reset --hard "$target"
+        git -C "$install_dir" clean -fd
+    fi
+}
+
 update_linux() {
     local install_dir="/opt/lazy"
 
@@ -17,7 +48,7 @@ update_linux() {
         exit 1
     fi
 
-    sudo git -C "$install_dir" pull --ff-only
+    sync_install_repo "$install_dir" 1
 
     sudo chmod +x "$install_dir/lazy.sh"
     sudo chmod +x "$install_dir/commands/"*.sh
@@ -52,7 +83,7 @@ update_git_bash() {
         exit 1
     fi
 
-    git -C "$install_dir" pull --ff-only
+    sync_install_repo "$install_dir" 0
 
     chmod +x "$install_dir/lazy.sh"
     chmod +x "$install_dir/commands/"*.sh
