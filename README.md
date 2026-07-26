@@ -29,7 +29,7 @@ Killed 17020
 Port 3000 is free.
 ```
 
-On Linux it uses `lsof`, falling back to `ss`, `fuser`, or `netstat`, and sends `SIGTERM` before `SIGKILL`. On Git Bash it uses `netstat`/`tasklist`/`taskkill`.
+On Linux it uses `lsof`, falling back to `ss`, `fuser`, or `netstat`, and sends `SIGTERM` before `SIGKILL`. On Git Bash it uses `netstat`/`tasklist`/`taskkill /T` (kills the whole process tree) and only targets `LISTENING` sockets — including IPv6 addresses like `[::1]:3000`, which is what Nuxt uses when `host` is `localhost` on Windows.
 
 ## Install
 

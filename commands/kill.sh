@@ -46,14 +46,27 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; th
     exit 1
 fi
 
-collect_pids_windows() {
+# Print "PID|ADDR" rows for LISTENING sockets on PORT (Windows netstat -ano).
+# Covers 127.0.0.1:3000, 0.0.0.0:3000, [::1]:3000, [::]:3000.
+list_listeners_windows() {
     netstat -ano 2>/dev/null |
-    awk -v port=":$PORT" '
-        $1 !~ /^(TCP|UDP)$/ { next }
-        substr($2, length($2) - length(port) + 1) != port { next }
-        $NF ~ /^[0-9]+$/ && $NF != "0" { print $NF }
-    ' |
-    sort -un
+    awk -v port="$PORT" '
+        BEGIN { suffix = ":" port }
+        $1 != "TCP" { next }
+        $4 != "LISTENING" { next }
+        {
+            addr = $2
+            pid = $NF
+            if (length(addr) < length(suffix)) next
+            if (substr(addr, length(addr) - length(suffix) + 1) != suffix) next
+            if (pid !~ /^[0-9]+$/ || pid == "0") next
+            print pid "|" addr
+        }
+    '
+}
+
+collect_pids_windows() {
+    list_listeners_windows | cut -d'|' -f1 | sort -un
 }
 
 collect_pids_unix() {
@@ -84,6 +97,11 @@ collect_pids_unix() {
     echo "$pids" | grep -E '^[0-9]+$' | sort -un
 }
 
+listener_addrs_for_pid_windows() {
+    local pid="$1"
+    list_listeners_windows | awk -F'|' -v pid="$pid" '$1 == pid { print $2 }' | sort -u | tr '\n' ' '
+}
+
 process_name_windows() {
     local pid="$1"
     local line
@@ -112,18 +130,18 @@ process_detail_unix() {
     echo "$args"
 }
 
+# Kill process and its children (Nuxt/Vite often leave child node listeners).
 kill_windows() {
     local pid="$1"
-    taskkill //PID "$pid" //F >/dev/null 2>&1
+    taskkill //PID "$pid" //T //F >/dev/null 2>&1
 }
 
 kill_unix() {
     local pid="$1"
     local i
 
-    if ! kill -15 "$pid" 2>/dev/null; then
-        return 1
-    fi
+    # Kill process group when possible, then the PID itself.
+    kill -15 "-$pid" 2>/dev/null || kill -15 "$pid" 2>/dev/null || return 1
 
     for i in 1 2 3 4 5 6 7 8 9 10; do
         if ! kill -0 "$pid" 2>/dev/null; then
@@ -132,7 +150,7 @@ kill_unix() {
         sleep 0.2
     done
 
-    kill -9 "$pid" 2>/dev/null
+    kill -9 "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
     sleep 0.2
 
     if kill -0 "$pid" 2>/dev/null; then
@@ -140,6 +158,28 @@ kill_unix() {
     fi
 
     return 0
+}
+
+# Nuxt binds host "localhost" (often ::1 on Windows). Confirm both stacks are free.
+port_still_held() {
+    if is_git_bash; then
+        [ -n "$(collect_pids_windows)" ]
+        return $?
+    fi
+
+    [ -n "$(collect_pids_unix)" ]
+    return $?
+}
+
+wait_until_free() {
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        if ! port_still_held; then
+            return 0
+        fi
+        sleep 0.2
+    done
+    return 1
 }
 
 if is_git_bash; then
@@ -156,24 +196,25 @@ fi
 COUNT=$(echo "$PIDS" | wc -l | tr -d ' ')
 
 echo ""
-echo "Processes on port $PORT:"
+echo "Processes listening on port $PORT:"
 echo ""
-printf "  %-8s %s\n" "PID" "NAME"
+printf "  %-8s %-22s %s\n" "PID" "ADDRESS" "NAME"
 
 while read -r pid; do
     [ -z "$pid" ] && continue
 
     if is_git_bash; then
         name=$(process_name_windows "$pid")
+        addrs=$(listener_addrs_for_pid_windows "$pid")
+        printf "  %-8s %-22s %s\n" "$pid" "${addrs:-?}" "$name"
     else
         name=$(process_name_unix "$pid")
         detail=$(process_detail_unix "$pid")
         if [ -n "$detail" ]; then
             name="$name  ($(echo "$detail" | cut -c1-60))"
         fi
+        printf "  %-8s %-22s %s\n" "$pid" "*:$PORT" "$name"
     fi
-
-    printf "  %-8s %s\n" "$pid" "$name"
 done <<< "$PIDS"
 
 echo ""
@@ -211,7 +252,7 @@ while read -r pid; do
     fi
 
     if "$killer" "$pid"; then
-        echo "Killed $pid"
+        echo "Killed $pid (process tree)"
     else
         echo "Failed to kill $pid"
         FAILED=$((FAILED + 1))
@@ -224,5 +265,36 @@ if [ "$FAILED" -gt 0 ]; then
     exit 1
 fi
 
+if wait_until_free; then
+    echo ""
+    echo "Port $PORT is free."
+    exit 0
+fi
+
+# Still held — show whoever remains (common with orphaned Nuxt/Vite children).
 echo ""
-echo "Port $PORT is free."
+echo "Warning: Port $PORT is still in use after kill. Remaining listeners:"
+echo ""
+
+if is_git_bash; then
+    REMAINING=$(collect_pids_windows)
+else
+    REMAINING=$(collect_pids_unix)
+fi
+
+printf "  %-8s %-22s %s\n" "PID" "ADDRESS" "NAME"
+while read -r pid; do
+    [ -z "$pid" ] && continue
+    if is_git_bash; then
+        name=$(process_name_windows "$pid")
+        addrs=$(listener_addrs_for_pid_windows "$pid")
+        printf "  %-8s %-22s %s\n" "$pid" "${addrs:-?}" "$name"
+    else
+        name=$(process_name_unix "$pid")
+        printf "  %-8s %-22s %s\n" "$pid" "*:$PORT" "$name"
+    fi
+done <<< "$REMAINING"
+
+echo ""
+echo "Tip: run the command again, or close the parent terminal that started the process."
+exit 1
