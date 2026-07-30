@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-07-30]
+
+### Changed
+
+- `lazy` with no arguments now lists a description next to each command, column-aligned from the longest invocation so the descriptions stay flush as commands are added
+- Command names in the usage list are printed in bold cyan and descriptions dimmed, with color applied only on a TTY and skipped when `NO_COLOR` is set
+- Unknown commands print the usage list after the error instead of only the error
+
 ## [2026-07-26]
 
 ### Added
