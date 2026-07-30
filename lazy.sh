@@ -12,6 +12,7 @@ COMMAND="$1"
 # never leaves the descriptions ragged.
 COMMANDS=(
     "lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
+    "lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "lazy kill <port> [-y]|List the processes listening on <port> and kill them"
     "lazy update|Update lazy to the latest version from origin"
 )

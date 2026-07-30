@@ -5,8 +5,54 @@ Small Bash CLI helpers for Git workflows.
 ## Commands
 
 - `lazy branch.history` — interactive checkout history from the reflog (requires `fzf`)
+- `lazy git.remember` — store the Git username/password for the current repo so it stops asking
 - `lazy kill <port>` — list the processes listening on a port and kill them after confirmation
 - `lazy update` — update the installed CLI
+
+### `lazy git.remember`
+
+```bash
+lazy git.remember              # authenticate against origin
+lazy git.remember upstream     # another remote
+lazy git.remember -f           # replace the credential already stored
+```
+
+It checks whether the repository can already authenticate with the remote. If it
+can, it says so and stops. If it cannot, it asks for the username and
+password/token, verifies them against the remote (re-prompting when they are
+wrong, up to 3 attempts), and only then saves them with:
+
+```bash
+git config --local credential.helper "store --file=.git/.git-credentials"
+```
+
+Example:
+
+```
+Remote:  origin -> https://github.com/acme/web.git
+No credential stored for github.com yet.
+
+Note: use a personal access token as the password — github.com rejects account passwords.
+
+Attempt 1/3
+Username: acme-bot
+Password / token (hidden):
+Verifying against github.com ... failed
+
+Authentication failed — wrong username or password/token.
+
+Attempt 2/3
+Username [acme-bot]:
+Password / token (hidden):
+Verifying against github.com ... ok
+
+Saved. Git will no longer ask for this repository.
+```
+
+Nothing is written unless the credential actually works. The store file lives
+inside `.git/`, so it is never committed; remove it with
+`git config --local --unset credential.helper && rm -f .git/.git-credentials`.
+SSH remotes are reported as "nothing to store" since they use keys.
 
 ### `lazy kill`
 
