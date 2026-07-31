@@ -54,6 +54,24 @@ inside `.git/`, so it is never committed; remove it with
 `git config --local --unset credential.helper && rm -f .git/.git-credentials`.
 SSH remotes are reported as "nothing to store" since they use keys.
 
+If the directory is not a Git repository yet — or the repository has no remote —
+it asks for the repository URL instead of failing:
+
+```
+This directory is not a Git repository yet:
+  /home/me/web
+
+Enter the repository URL to authenticate against. The repository is
+created here (with the URL as 'origin') once the credential checks out.
+
+Repository URL: https://github.com/acme/web.git
+```
+
+The credential is verified against that URL first; only then does it ask to run
+`git init` and add the remote (`[Y/n]`, declining leaves the directory
+untouched). If a credential for the host already works, it is reused instead of
+asking again.
+
 ### `lazy kill`
 
 ```bash

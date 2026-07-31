@@ -3,8 +3,26 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${LAZY_UPDATE_LIB_DIR:-${SCRIPT_DIR}/../lib}"
+
+# The update rewrites this file in place (git reset --hard). Bash parses scripts
+# lazily, so a script still being read from the install dir would resume at a
+# stale byte offset and report a bogus syntax error after a successful update.
+# Run the real work from a throwaway copy that git cannot touch.
+if [ -z "${LAZY_UPDATE_REEXEC:-}" ]; then
+    self_copy="$(mktemp "${TMPDIR:-/tmp}/lazy-update.XXXXXX")"
+    cp "${BASH_SOURCE[0]}" "$self_copy"
+
+    status=0
+    LAZY_UPDATE_REEXEC=1 LAZY_UPDATE_LIB_DIR="$LIB_DIR" \
+        bash "$self_copy" "$@" || status=$?
+
+    rm -f "$self_copy"
+    exit "$status"
+fi
+
 # shellcheck source=../lib/platform.sh
-source "${SCRIPT_DIR}/../lib/platform.sh"
+source "${LIB_DIR}/platform.sh"
 
 # Sync an install checkout to the matching origin branch, discarding local edits.
 # Install dirs are not working copies — manual tweaks must not block updates.

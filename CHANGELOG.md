@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-07-31]
+
+### Changed
+
+- `lazy git.remember` no longer fails when there is nothing to attach the credential to. If the directory is not a Git repository yet, it says so and asks for the repository URL (re-prompting when the URL is not http(s) or has no host), verifies the username and password/token against it, and then — after a `[Y/n]` confirmation — runs `git init`, adds the URL as the remote, and stores the credential. Declining leaves the directory untouched and prints the `git clone` command instead. A repository that exists but has no remote takes the same path and gets the URL added as `origin`; naming a remote that does not exist in a repository that has others still errors with the list of available remotes.
+- `lazy git.remember`: when a credential for the host already works but the repository/remote still has to be created, it is reused instead of asking for the username and password again.
+
 ## [2026-07-30]
 
 ### Added
@@ -15,6 +22,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `lazy` with no arguments now lists a description next to each command, column-aligned from the longest invocation so the descriptions stay flush as commands are added
 - Command names in the usage list are printed in bold cyan and descriptions dimmed, with color applied only on a TTY and skipped when `NO_COLOR` is set
 - Unknown commands print the usage list after the error instead of only the error
+
+### Fixed
+
+- `lazy update` printing `unexpected EOF while looking for matching '"'` / `syntax error: unexpected end of file` after a successful update. Bash parses scripts lazily by byte offset, so rewriting the launcher while it is still running made bash resume parsing the new file at a stale offset (landing inside the `COMMANDS` array). `lazy.sh` now `exec`s the command file instead of running it as a child, and `update.sh` re-execs itself from a temporary copy before touching the install dir, so no file being rewritten is still being read.
 
 ## [2026-07-26]
 

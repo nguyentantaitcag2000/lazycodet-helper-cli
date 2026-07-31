@@ -69,4 +69,8 @@ if [ ! -f "$COMMAND_FILE" ]; then
     exit 1
 fi
 
-bash "$COMMAND_FILE" "$@"
+# exec, not a child bash: `lazy update` rewrites this very file, and bash reads
+# scripts lazily. Returning here after the rewrite would make bash resume
+# parsing at a stale byte offset ("unexpected EOF"), even though the command
+# itself succeeded. Replacing the process means nothing reads this file again.
+exec bash "$COMMAND_FILE" "$@"

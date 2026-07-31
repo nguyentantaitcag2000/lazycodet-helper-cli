@@ -26,6 +26,10 @@ usage() {
     echo "If it cannot, it asks for the username and password/token, verifies them,"
     echo "and stores them in ${CREDENTIAL_STORE} so Git stops asking."
     echo ""
+    echo "When the directory is not a Git repository yet (or the repository has no"
+    echo "remote), it asks for the repository URL first and sets it up instead of"
+    echo "failing."
+    echo ""
     echo "Arguments:"
     echo "  remote        Remote to authenticate against (default: origin)"
     echo ""
@@ -55,61 +59,175 @@ done
 
 REMOTE="${REMOTE:-origin}"
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "Error: This directory is not a Git repository."
-    exit 1
-fi
-
-REMOTE_URL=$(git remote get-url "$REMOTE" 2>/dev/null)
-
-if [ -z "$REMOTE_URL" ]; then
-    echo "Error: Remote not found -> $REMOTE"
-    REMOTES=$(git remote)
-    if [ -n "$REMOTES" ]; then
-        echo ""
-        echo "Available remotes:"
-        echo "$REMOTES" | sed 's/^/  /'
+# /dev/tty can exist yet be unusable (cron, some CI runners), so try to open it.
+require_tty() {
+    if { : < /dev/tty; } 2>/dev/null; then
+        return 0
     fi
+
+    echo ""
+    echo "Error: An interactive terminal is required to enter the credential."
+    echo "       Run 'lazy git.remember' directly in a terminal."
     exit 1
-fi
+}
 
-# --- Split the remote URL into protocol / host[:port] / path ------------------
+# --- Split a remote URL into protocol / host[:port] / path -------------------
+# Returns 2 when the URL is not http(s) and 1 when no host could be read.
 
-case "$REMOTE_URL" in
-    https://*) PROTOCOL="https"; URL_REST="${REMOTE_URL#https://}" ;;
-    http://*)  PROTOCOL="http";  URL_REST="${REMOTE_URL#http://}" ;;
-    *)
-        echo "Info: Remote '$REMOTE' does not use HTTP(S)."
-        echo "      $REMOTE_URL"
-        echo ""
-        echo "Git only remembers a username/password for http(s) remotes."
-        echo "SSH remotes authenticate with keys instead — nothing to store."
-        exit 0
-        ;;
-esac
-
-URL_HOSTPART="${URL_REST%%/*}"
-URL_PATH="${URL_REST#"$URL_HOSTPART"}"
-
+PROTOCOL=""
+HOST=""
+URL_PATH=""
 URL_USER=""
-case "$URL_HOSTPART" in
-    *@*)
-        URL_USER="${URL_HOSTPART%%@*}"
-        URL_USER="${URL_USER%%:*}"
-        HOST="${URL_HOSTPART#*@}"
-        ;;
-    *) HOST="$URL_HOSTPART" ;;
-esac
+CLEAN_URL=""
+CREDENTIAL_PATH=""
 
-if [ -z "$HOST" ]; then
-    echo "Error: Could not read the host from the remote URL -> $REMOTE_URL"
+parse_remote_url() {
+    local url="$1"
+    local rest hostpart
+
+    case "$url" in
+        https://*) PROTOCOL="https"; rest="${url#https://}" ;;
+        http://*)  PROTOCOL="http";  rest="${url#http://}" ;;
+        *) return 2 ;;
+    esac
+
+    hostpart="${rest%%/*}"
+    URL_PATH="${rest#"$hostpart"}"
+
+    URL_USER=""
+    case "$hostpart" in
+        *@*)
+            URL_USER="${hostpart%%@*}"
+            URL_USER="${URL_USER%%:*}"
+            HOST="${hostpart#*@}"
+            ;;
+        *) HOST="$hostpart" ;;
+    esac
+
+    if [ -z "$HOST" ]; then
+        return 1
+    fi
+
+    # Rebuilt without any embedded credentials so verification always uses the
+    # username/password we are testing.
+    CLEAN_URL="${PROTOCOL}://${HOST}${URL_PATH}"
+    CREDENTIAL_PATH="${URL_PATH#/}"
+
+    return 0
+}
+
+# Asks for a repository URL until it parses as http(s). Sets REMOTE_URL.
+prompt_remote_url() {
+    local attempt=1
+    local input rc
+
+    while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
+        printf 'Repository URL: '
+
+        if ! IFS= read -r input < /dev/tty; then
+            echo ""
+            echo "Cancelled."
+            exit 1
+        fi
+
+        # Trim surrounding whitespace — URLs are often pasted with a stray space.
+        input="${input#"${input%%[![:space:]]*}"}"
+        input="${input%"${input##*[![:space:]]}"}"
+
+        if [ -z "$input" ]; then
+            echo "Error: The URL must not be empty."
+            echo ""
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        parse_remote_url "$input"
+        rc=$?
+
+        if [ "$rc" -eq 0 ]; then
+            REMOTE_URL="$input"
+            return 0
+        fi
+
+        if [ "$rc" -eq 2 ]; then
+            echo "Error: Only http(s) URLs can store a username/password."
+            echo "       SSH remotes authenticate with keys instead — nothing to store."
+        else
+            echo "Error: Could not read the host from the URL -> $input"
+        fi
+
+        echo ""
+        attempt=$((attempt + 1))
+    done
+
+    echo "Error: Giving up after ${MAX_ATTEMPTS} attempts. Nothing was saved."
     exit 1
+}
+
+# --- Where are we, and which URL do we authenticate against? -----------------
+
+REMOTE_URL=""
+NEED_INIT=0
+NEED_REMOTE_ADD=0
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo ""
+    echo "This directory is not a Git repository yet:"
+    echo "  $(pwd)"
+    echo ""
+    echo "Enter the repository URL to authenticate against. The repository is"
+    echo "created here (with the URL as '$REMOTE') once the credential checks out."
+    echo ""
+    require_tty
+    prompt_remote_url
+    NEED_INIT=1
+else
+    REMOTE_URL=$(git remote get-url "$REMOTE" 2>/dev/null)
+
+    if [ -z "$REMOTE_URL" ]; then
+        REMOTES=$(git remote)
+
+        if [ -n "$REMOTES" ]; then
+            echo "Error: Remote not found -> $REMOTE"
+            echo ""
+            echo "Available remotes:"
+            echo "$REMOTES" | sed 's/^/  /'
+            exit 1
+        fi
+
+        echo ""
+        echo "This repository has no remote yet."
+        echo ""
+        echo "Enter the repository URL. It is added as '$REMOTE' once the"
+        echo "credential checks out."
+        echo ""
+        require_tty
+        prompt_remote_url
+        NEED_REMOTE_ADD=1
+    else
+        parse_remote_url "$REMOTE_URL"
+        PARSE_RC=$?
+
+        if [ "$PARSE_RC" -eq 2 ]; then
+            echo "Info: Remote '$REMOTE' does not use HTTP(S)."
+            echo "      $REMOTE_URL"
+            echo ""
+            echo "Git only remembers a username/password for http(s) remotes."
+            echo "SSH remotes authenticate with keys instead — nothing to store."
+            exit 0
+        elif [ "$PARSE_RC" -ne 0 ]; then
+            echo "Error: Could not read the host from the remote URL -> $REMOTE_URL"
+            exit 1
+        fi
+    fi
 fi
 
-# Rebuilt without any embedded credentials so verification always uses the
-# username/password we are testing.
-CLEAN_URL="${PROTOCOL}://${HOST}${URL_PATH}"
-CREDENTIAL_PATH="${URL_PATH#/}"
+# A repository/remote still has to be created before the credential can be
+# stored, so "already authenticated" is not the end of the run.
+SETUP_PENDING=0
+if [ "$NEED_INIT" -eq 1 ] || [ "$NEED_REMOTE_ADD" -eq 1 ]; then
+    SETUP_PENDING=1
+fi
 
 use_http_path() {
     local value
@@ -269,6 +387,10 @@ report_unexpected_error() {
 echo ""
 echo "Remote:  $REMOTE -> $CLEAN_URL"
 
+INPUT_USER=""
+INPUT_PASS=""
+REUSED=0
+
 STORED=$(credential_request | git_quiet credential fill 2>/dev/null)
 STORED_USER=$(field_of "$STORED" username)
 STORED_PASS=$(field_of "$STORED" password)
@@ -278,26 +400,36 @@ if [ -n "$STORED_PASS" ] && [ "$FORCE" -eq 0 ]; then
 
     if verify_credential "$STORED_USER" "$STORED_PASS"; then
         echo "ok"
-        echo ""
-        echo "Already authenticated as '${STORED_USER}' — nothing to do."
-        HELPERS=$(git config --get-all credential.helper | paste -sd ', ' -)
-        if [ -n "$HELPERS" ]; then
-            echo "credential.helper: $HELPERS"
+
+        if [ "$SETUP_PENDING" -eq 0 ]; then
+            echo ""
+            echo "Already authenticated as '${STORED_USER}' — nothing to do."
+            HELPERS=$(git config --get-all credential.helper | paste -sd ', ' -)
+            if [ -n "$HELPERS" ]; then
+                echo "credential.helper: $HELPERS"
+            fi
+            echo ""
+            echo "Tip: run 'lazy git.remember -f' to replace it."
+            exit 0
         fi
+
         echo ""
-        echo "Tip: run 'lazy git.remember -f' to replace it."
-        exit 0
+        echo "A working credential for $HOST is already available (user '${STORED_USER}')."
+        echo "It is reused for this repository — no need to type it again."
+        INPUT_USER="$STORED_USER"
+        INPUT_PASS="$STORED_PASS"
+        REUSED=1
+    else
+        echo "failed"
+
+        if ! is_auth_error "$VERIFY_OUTPUT"; then
+            report_unexpected_error
+            exit 1
+        fi
+
+        echo ""
+        echo "Warning: The stored credential for '${STORED_USER}' is no longer valid."
     fi
-
-    echo "failed"
-
-    if ! is_auth_error "$VERIFY_OUTPUT"; then
-        report_unexpected_error
-        exit 1
-    fi
-
-    echo ""
-    echo "Warning: The stored credential for '${STORED_USER}' is no longer valid."
 elif [ "$FORCE" -eq 1 ]; then
     echo "Force: asking for a new credential."
 else
@@ -306,27 +438,23 @@ fi
 
 # --- Ask, verify, retry ------------------------------------------------------
 
-# /dev/tty can exist yet be unusable (cron, some CI runners), so try to open it.
-if ! { : < /dev/tty; } 2>/dev/null; then
-    echo ""
-    echo "Error: An interactive terminal is required to enter the credential."
-    echo "       Run 'lazy git.remember' directly in a terminal."
-    exit 1
-fi
-
 DEFAULT_USER="${STORED_USER:-$URL_USER}"
 
-echo ""
-case "$HOST" in
-    *github*|*gitlab*|*bitbucket*)
-        echo "Note: use a personal access token as the password — $HOST rejects account passwords."
-        echo ""
-        ;;
-esac
+if [ "$REUSED" -eq 0 ]; then
+    require_tty
+
+    echo ""
+    case "$HOST" in
+        *github*|*gitlab*|*bitbucket*)
+            echo "Note: use a personal access token as the password — $HOST rejects account passwords."
+            echo ""
+            ;;
+    esac
+fi
 
 ATTEMPT=1
 
-while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+while [ "$REUSED" -eq 0 ] && [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
     if [ "$MAX_ATTEMPTS" -gt 1 ]; then
         echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
     fi
@@ -396,6 +524,52 @@ while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
     fi
 done
 
+# --- Create the repository / remote when it was missing ----------------------
+
+if [ "$NEED_INIT" -eq 1 ]; then
+    echo ""
+    printf "Create a Git repository here and add the URL as '%s'? [Y/n]: " "$REMOTE"
+
+    if ! IFS= read -r CONFIRM < /dev/tty; then
+        echo ""
+        CONFIRM="n"
+    fi
+
+    case "$CONFIRM" in
+        [Nn]|[Nn][Oo])
+            echo ""
+            echo "Nothing was created or saved. The credential is valid, though:"
+            echo "  user: $INPUT_USER"
+            echo "  host: $HOST"
+            echo ""
+            echo "Clone the repository and run 'lazy git.remember' inside it:"
+            echo "  git clone $CLEAN_URL"
+            exit 0
+            ;;
+    esac
+
+    if ! git init -q >/dev/null 2>&1; then
+        echo "Error: Could not create a Git repository here."
+        exit 1
+    fi
+
+    if ! git remote add "$REMOTE" "$REMOTE_URL" 2>/dev/null; then
+        echo "Error: Could not add the remote '$REMOTE'."
+        exit 1
+    fi
+
+    echo ""
+    echo "Created a Git repository with '$REMOTE' -> $CLEAN_URL"
+elif [ "$NEED_REMOTE_ADD" -eq 1 ]; then
+    if ! git remote add "$REMOTE" "$REMOTE_URL" 2>/dev/null; then
+        echo "Error: Could not add the remote '$REMOTE'."
+        exit 1
+    fi
+
+    echo ""
+    echo "Added remote '$REMOTE' -> $CLEAN_URL"
+fi
+
 # --- Save --------------------------------------------------------------------
 
 git config --local credential.helper "$HELPER_VALUE"
@@ -434,3 +608,9 @@ echo "  file:   $STORE_FILE"
 echo ""
 echo "The file lives inside .git, so it is never committed."
 echo "Remove it with: git config --local --unset credential.helper && rm -f $CREDENTIAL_STORE"
+
+if [ "$NEED_INIT" -eq 1 ]; then
+    echo ""
+    echo "The repository is empty — fetch its content with:"
+    echo "  git fetch $REMOTE && git checkout <branch>"
+fi
