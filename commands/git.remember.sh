@@ -60,8 +60,12 @@ done
 REMOTE="${REMOTE:-origin}"
 
 # /dev/tty can exist yet be unusable (cron, some CI runners), so try to open it.
+has_tty() {
+    { : < /dev/tty; } 2>/dev/null
+}
+
 require_tty() {
-    if { : < /dev/tty; } 2>/dev/null; then
+    if has_tty; then
         return 0
     fi
 
@@ -416,6 +420,91 @@ report_unexpected_error() {
     echo "Tip: check the network/VPN and the remote URL, then run the command again."
 }
 
+# Default branch of the remote, falling back to main/master/first branch when
+# the remote never advertised a HEAD.
+remote_default_branch() {
+    local branch cand
+
+    git remote set-head -a "$REMOTE" >/dev/null 2>&1
+
+    branch=$(git symbolic-ref --short "refs/remotes/${REMOTE}/HEAD" 2>/dev/null)
+    branch="${branch#"${REMOTE}/"}"
+
+    if [ -z "$branch" ]; then
+        for cand in main master; do
+            if git rev-parse --verify --quiet "refs/remotes/${REMOTE}/${cand}" >/dev/null 2>&1; then
+                branch="$cand"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$branch" ]; then
+        branch=$(git for-each-ref --format='%(refname:strip=3)' "refs/remotes/${REMOTE}/" 2>/dev/null | head -n 1)
+    fi
+
+    printf '%s' "$branch"
+}
+
+# A repo with an unborn HEAD authenticates fine but has no content yet — the
+# credential alone is useless, so offer to pull the code in.
+fetch_into_empty_repo() {
+    local branch
+
+    echo ""
+    echo "This repository has no commits yet — nothing was ever fetched from '$REMOTE'."
+
+    # Nothing to ask when there is no terminal; the credential is stored either way.
+    if ! has_tty; then
+        echo ""
+        echo "Fetch it with: git fetch $REMOTE && git checkout <branch>"
+        return 0
+    fi
+
+    echo ""
+    printf "Fetch '%s' and check out its default branch? [Y/n]: " "$REMOTE"
+
+    if ! IFS= read -r ANSWER < /dev/tty; then
+        echo ""
+        ANSWER="n"
+    fi
+
+    case "$ANSWER" in
+        [Nn]|[Nn][Oo])
+            echo ""
+            echo "Left as is. Fetch it later with:"
+            echo "  git fetch $REMOTE && git checkout <branch>"
+            return 0
+            ;;
+    esac
+
+    echo ""
+
+    if ! git fetch --progress "$REMOTE"; then
+        echo ""
+        echo "Error: Could not fetch '$REMOTE'."
+        return 1
+    fi
+
+    branch=$(remote_default_branch)
+
+    if [ -z "$branch" ]; then
+        echo ""
+        echo "The remote has no branches yet — nothing to check out."
+        return 0
+    fi
+
+    if ! git checkout -B "$branch" --track "${REMOTE}/${branch}"; then
+        echo ""
+        echo "Error: Could not check out '${REMOTE}/${branch}'."
+        return 1
+    fi
+
+    echo ""
+    echo "Checked out '$branch'."
+    return 0
+}
+
 # --- Is authentication already working? --------------------------------------
 
 echo ""
@@ -437,13 +526,18 @@ if [ -n "$STORED_PASS" ] && [ "$FORCE" -eq 0 ]; then
 
         if [ "$SETUP_PENDING" -eq 0 ]; then
             echo ""
-            echo "Already authenticated as '${STORED_USER}' — nothing to do."
+            echo "Already authenticated as '${STORED_USER}' — the credential is fine."
             HELPERS=$(git config --get-all credential.helper | paste -sd ', ' -)
             if [ -n "$HELPERS" ]; then
                 echo "credential.helper: $HELPERS"
             fi
             echo ""
             echo "Tip: run 'lazy git.remember -f' to replace it."
+
+            if ! git rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+                fetch_into_empty_repo || exit 1
+            fi
+
             exit 0
         fi
 
