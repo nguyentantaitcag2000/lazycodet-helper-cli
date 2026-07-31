@@ -54,23 +54,33 @@ inside `.git/`, so it is never committed; remove it with
 `git config --local --unset credential.helper && rm -f .git/.git-credentials`.
 SSH remotes are reported as "nothing to store" since they use keys.
 
-If the directory is not a Git repository yet — or the repository has no remote —
-it asks for the repository URL instead of failing:
+If the directory is not a Git repository yet, it asks for the repository URL
+instead of failing, and clones it once the credential checks out:
 
 ```
 This directory is not a Git repository yet:
-  /home/me/web
+  /home/me/code
 
-Enter the repository URL to authenticate against. The repository is
-created here (with the URL as 'origin') once the credential checks out.
+Enter the repository URL to authenticate against. Once the credential
+checks out, the repository is cloned into a subdirectory here and the
+credential is stored inside that clone.
 
 Repository URL: https://github.com/acme/web.git
+Username: acme-bot
+Password / token (hidden):
+Verifying against github.com ... ok
+
+Clone into directory [web]:
+
+Cloning https://github.com/acme/web.git into 'web' ...
 ```
 
-The credential is verified against that URL first; only then does it ask to run
-`git init` and add the remote (`[Y/n]`, declining leaves the directory
-untouched). If a credential for the host already works, it is reused instead of
-asking again.
+The clone uses the credential that was just verified, so it never asks again,
+and the credential is stored inside the new clone — not in the directory you
+started from. An existing non-empty target directory stops the run instead of
+being clobbered. If the repository exists but has no remote, the entered URL is
+added as the remote instead. A credential for the host that already works is
+reused rather than asked for again.
 
 ### `lazy kill`
 

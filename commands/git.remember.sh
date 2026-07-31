@@ -26,9 +26,9 @@ usage() {
     echo "If it cannot, it asks for the username and password/token, verifies them,"
     echo "and stores them in ${CREDENTIAL_STORE} so Git stops asking."
     echo ""
-    echo "When the directory is not a Git repository yet (or the repository has no"
-    echo "remote), it asks for the repository URL first and sets it up instead of"
-    echo "failing."
+    echo "When the directory is not a Git repository yet, it asks for the repository"
+    echo "URL instead of failing, then clones it with the verified credential. A"
+    echo "repository without a remote gets the URL added as the remote."
     echo ""
     echo "Arguments:"
     echo "  remote        Remote to authenticate against (default: origin)"
@@ -167,7 +167,7 @@ prompt_remote_url() {
 # --- Where are we, and which URL do we authenticate against? -----------------
 
 REMOTE_URL=""
-NEED_INIT=0
+NEED_CLONE=0
 NEED_REMOTE_ADD=0
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -175,12 +175,13 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "This directory is not a Git repository yet:"
     echo "  $(pwd)"
     echo ""
-    echo "Enter the repository URL to authenticate against. The repository is"
-    echo "created here (with the URL as '$REMOTE') once the credential checks out."
+    echo "Enter the repository URL to authenticate against. Once the credential"
+    echo "checks out, the repository is cloned into a subdirectory here and the"
+    echo "credential is stored inside that clone."
     echo ""
     require_tty
     prompt_remote_url
-    NEED_INIT=1
+    NEED_CLONE=1
 else
     REMOTE_URL=$(git remote get-url "$REMOTE" 2>/dev/null)
 
@@ -222,10 +223,10 @@ else
     fi
 fi
 
-# A repository/remote still has to be created before the credential can be
+# A repository/remote still has to be set up before the credential can be
 # stored, so "already authenticated" is not the end of the run.
 SETUP_PENDING=0
-if [ "$NEED_INIT" -eq 1 ] || [ "$NEED_REMOTE_ADD" -eq 1 ]; then
+if [ "$NEED_CLONE" -eq 1 ] || [ "$NEED_REMOTE_ADD" -eq 1 ]; then
     SETUP_PENDING=1
 fi
 
@@ -347,10 +348,18 @@ is_askpass_failure() {
 }
 
 VERIFY_OUTPUT=""
+# 1 when only the URL-embedded fallback worked, so later git calls use it too.
+VERIFY_VIA_URL=0
+
+credential_url() {
+    printf '%s://%s:%s@%s%s' \
+        "$PROTOCOL" "$(urlencode "$1")" "$(urlencode "$2")" "$HOST" "$URL_PATH"
+}
 
 verify_credential() {
     local user="$1" pass="$2"
-    local encoded_url
+
+    VERIFY_VIA_URL=0
 
     if VERIFY_OUTPUT=$(git_as_user "$user" "$pass" ls-remote --heads "$CLEAN_URL" 2>&1); then
         return 0
@@ -362,15 +371,40 @@ verify_credential() {
 
     # Fallback: credentials in the URL. Less private (visible in the process
     # list) but it works where the askpass helper cannot be executed.
-    encoded_url="${PROTOCOL}://$(urlencode "$user"):$(urlencode "$pass")@${HOST}${URL_PATH}"
-
     if VERIFY_OUTPUT=$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
         git -c credential.helper= -c credential.interactive=false \
-            ls-remote --heads "$encoded_url" 2>&1); then
+            ls-remote --heads "$(credential_url "$user" "$pass")" 2>&1); then
+        VERIFY_VIA_URL=1
         return 0
     fi
 
     return 1
+}
+
+# Clones with the credential we just verified, so the clone itself never asks.
+clone_repo() {
+    local target="$1"
+    local out rc
+
+    if [ "$VERIFY_VIA_URL" -eq 0 ]; then
+        git_as_user "$INPUT_USER" "$INPUT_PASS" clone --progress "$CLEAN_URL" "$target"
+        return $?
+    fi
+
+    out=$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
+        git -c credential.helper= -c credential.interactive=false \
+            clone "$(credential_url "$INPUT_USER" "$INPUT_PASS")" "$target" 2>&1)
+    rc=$?
+
+    # Mask any credential git echoed back before showing the output.
+    printf '%s\n' "$out" | sed 's|://\([^:@/]*\):[^@/]*@|://\1:***@|g'
+
+    if [ "$rc" -eq 0 ]; then
+        # Never leave the password behind in .git/config.
+        git -C "$target" remote set-url "$REMOTE" "$CLEAN_URL"
+    fi
+
+    return $rc
 }
 
 report_unexpected_error() {
@@ -524,42 +558,67 @@ while [ "$REUSED" -eq 0 ] && [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
     fi
 done
 
-# --- Create the repository / remote when it was missing ----------------------
+# --- Clone / wire up the remote when the repository was missing ---------------
 
-if [ "$NEED_INIT" -eq 1 ]; then
+CLONE_DIR=""
+
+if [ "$NEED_CLONE" -eq 1 ]; then
+    # Same default directory name `git clone` itself would pick.
+    CLONE_DIR="${URL_PATH%/}"
+    CLONE_DIR="${CLONE_DIR##*/}"
+    CLONE_DIR="${CLONE_DIR%.git}"
+
     echo ""
-    printf "Create a Git repository here and add the URL as '%s'? [Y/n]: " "$REMOTE"
 
-    if ! IFS= read -r CONFIRM < /dev/tty; then
+    while :; do
+        if [ -n "$CLONE_DIR" ]; then
+            printf 'Clone into directory [%s]: ' "$CLONE_DIR"
+        else
+            printf 'Clone into directory: '
+        fi
+
+        if ! IFS= read -r ANSWER < /dev/tty; then
+            echo ""
+            echo "Cancelled — nothing was cloned or saved."
+            exit 1
+        fi
+
+        ANSWER="${ANSWER#"${ANSWER%%[![:space:]]*}"}"
+        ANSWER="${ANSWER%"${ANSWER##*[![:space:]]}"}"
+        CLONE_DIR="${ANSWER:-$CLONE_DIR}"
+
+        if [ -z "$CLONE_DIR" ]; then
+            echo "Error: The directory must not be empty."
+            continue
+        fi
+
+        # An existing empty directory is fine — `git clone` accepts it.
+        if [ -e "$CLONE_DIR" ] && [ -n "$(ls -A "$CLONE_DIR" 2>/dev/null)" ]; then
+            echo "Error: '$CLONE_DIR' already exists and is not empty."
+            echo ""
+            echo "If it is the repository, run 'lazy git.remember' inside it instead:"
+            echo "  cd $CLONE_DIR && lazy git.remember"
+            exit 1
+        fi
+
+        break
+    done
+
+    echo ""
+    echo "Cloning $CLEAN_URL into '$CLONE_DIR' ..."
+    echo ""
+
+    if ! clone_repo "$CLONE_DIR"; then
         echo ""
-        CONFIRM="n"
-    fi
-
-    case "$CONFIRM" in
-        [Nn]|[Nn][Oo])
-            echo ""
-            echo "Nothing was created or saved. The credential is valid, though:"
-            echo "  user: $INPUT_USER"
-            echo "  host: $HOST"
-            echo ""
-            echo "Clone the repository and run 'lazy git.remember' inside it:"
-            echo "  git clone $CLEAN_URL"
-            exit 0
-            ;;
-    esac
-
-    if ! git init -q >/dev/null 2>&1; then
-        echo "Error: Could not create a Git repository here."
+        echo "Error: The clone failed even though the credential is valid."
+        echo "       Nothing was saved."
         exit 1
     fi
 
-    if ! git remote add "$REMOTE" "$REMOTE_URL" 2>/dev/null; then
-        echo "Error: Could not add the remote '$REMOTE'."
+    if ! cd "$CLONE_DIR"; then
+        echo "Error: Could not enter '$CLONE_DIR'."
         exit 1
     fi
-
-    echo ""
-    echo "Created a Git repository with '$REMOTE' -> $CLEAN_URL"
 elif [ "$NEED_REMOTE_ADD" -eq 1 ]; then
     if ! git remote add "$REMOTE" "$REMOTE_URL" 2>/dev/null; then
         echo "Error: Could not add the remote '$REMOTE'."
@@ -609,8 +668,8 @@ echo ""
 echo "The file lives inside .git, so it is never committed."
 echo "Remove it with: git config --local --unset credential.helper && rm -f $CREDENTIAL_STORE"
 
-if [ "$NEED_INIT" -eq 1 ]; then
+if [ "$NEED_CLONE" -eq 1 ]; then
     echo ""
-    echo "The repository is empty — fetch its content with:"
-    echo "  git fetch $REMOTE && git checkout <branch>"
+    echo "The repository is cloned and ready:"
+    echo "  cd $CLONE_DIR"
 fi

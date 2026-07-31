@@ -8,8 +8,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- `lazy git.remember` no longer fails when there is nothing to attach the credential to. If the directory is not a Git repository yet, it says so and asks for the repository URL (re-prompting when the URL is not http(s) or has no host), verifies the username and password/token against it, and then — after a `[Y/n]` confirmation — runs `git init`, adds the URL as the remote, and stores the credential. Declining leaves the directory untouched and prints the `git clone` command instead. A repository that exists but has no remote takes the same path and gets the URL added as `origin`; naming a remote that does not exist in a repository that has others still errors with the list of available remotes.
-- `lazy git.remember`: when a credential for the host already works but the repository/remote still has to be created, it is reused instead of asking for the username and password again.
+- `lazy git.remember` no longer fails when there is nothing to attach the credential to. If the directory is not a Git repository yet, it says so and asks for the repository URL (re-prompting when the URL is not http(s) or has no host), verifies the username and password/token against it, then clones the repository into a subdirectory (default name from the URL, editable at the prompt) and stores the credential inside that clone. The clone reuses the verified credential, so it never asks again; when only the URL-embedded fallback works, the remote URL is rewritten afterwards so no password stays in `.git/config`. An existing non-empty target directory stops the run with the `cd <dir> && lazy git.remember` hint instead of clobbering it.
+- `lazy git.remember`: a repository that exists but has no remote gets the entered URL added as the remote instead of erroring. Naming a remote that does not exist in a repository that has others still errors with the list of available remotes.
+- `lazy git.remember`: when a credential for the host already works but the repository still has to be cloned/wired up, it is reused instead of asking for the username and password again.
 
 ## [2026-07-30]
 
