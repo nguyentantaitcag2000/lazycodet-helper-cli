@@ -12,6 +12,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `lazy git.remember`: a repository that exists but has no remote gets the entered URL added as the remote instead of erroring. Naming a remote that does not exist in a repository that has others still errors with the list of available remotes.
 - `lazy git.remember`: when a credential for the host already works but the repository still has to be cloned/wired up, it is reused instead of asking for the username and password again.
 - `lazy git.remember`: a repository whose `HEAD` is unborn (a `git init` that never fetched anything — the state the previous version left behind) no longer stops at "nothing to do". It offers to `git fetch` and check out the remote's default branch, falling back to `main`/`master`/the first remote branch when the remote advertises no `HEAD`. Declining, a branchless remote, or a missing terminal just prints the `git fetch` hint and exits 0.
+- `lazy git.remember`: that checkout is only offered when the worktree holds nothing but `.git`, since it lands in the current worktree rather than a subdirectory. A worktree rooted at `$HOME` warns that the `.git` was probably created by accident and prints the `rm -rf` command; any other worktree with files in it prints the manual `git fetch` command. Neither touches the directory.
 
 ## [2026-07-30]
 

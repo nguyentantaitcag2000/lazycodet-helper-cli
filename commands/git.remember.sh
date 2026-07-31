@@ -448,11 +448,43 @@ remote_default_branch() {
 
 # A repo with an unborn HEAD authenticates fine but has no content yet — the
 # credential alone is useless, so offer to pull the code in.
+#
+# The checkout lands in this worktree, so it is only ever offered for a
+# directory that holds nothing but .git. Checking out into a directory that
+# already has files (a home directory, most of all) would scatter the whole
+# repository over it.
 fetch_into_empty_repo() {
-    local branch
+    local branch toplevel leftovers
 
     echo ""
     echo "This repository has no commits yet — nothing was ever fetched from '$REMOTE'."
+
+    toplevel=$(git rev-parse --show-toplevel 2>/dev/null)
+    toplevel="${toplevel:-$PWD}"
+    leftovers=$(cd "$toplevel" && ls -A 2>/dev/null | grep -vFx '.git' | head -n 5)
+
+    if [ "$toplevel" = "$HOME" ]; then
+        echo ""
+        echo "Warning: The repository root is your home directory:"
+        echo "  $toplevel"
+        echo ""
+        echo "Nothing is checked out there — it would scatter the repository over your"
+        echo "home directory. This '.git' was most likely created by accident."
+        echo ""
+        echo "Remove it with: rm -rf ${toplevel}/.git"
+        echo "Then run 'lazy git.remember' from an empty directory to clone properly."
+        return 0
+    fi
+
+    if [ -n "$leftovers" ]; then
+        echo ""
+        echo "Nothing is checked out: '$toplevel' already contains other files, and a"
+        echo "checkout would drop the whole repository next to them."
+        echo ""
+        echo "Fetch it yourself if that is what you want:"
+        echo "  git fetch $REMOTE && git checkout <branch>"
+        return 0
+    fi
 
     # Nothing to ask when there is no terminal; the credential is stored either way.
     if ! has_tty; then
@@ -462,7 +494,8 @@ fetch_into_empty_repo() {
     fi
 
     echo ""
-    printf "Fetch '%s' and check out its default branch? [Y/n]: " "$REMOTE"
+    echo "Target: $toplevel"
+    printf "Fetch '%s' and check out its default branch here? [Y/n]: " "$REMOTE"
 
     if ! IFS= read -r ANSWER < /dev/tty; then
         echo ""

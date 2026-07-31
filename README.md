@@ -79,7 +79,10 @@ The clone uses the credential that was just verified, so it never asks again,
 and the credential is stored inside the new clone — not in the directory you
 started from. If the repository exists but has no commits yet, it offers to
 `git fetch` and check out the remote's default branch instead of reporting that
-the credential is fine and stopping there. An existing non-empty target directory stops the run instead of
+the credential is fine and stopping there — but only when the directory holds
+nothing but `.git`, because that checkout lands in the current directory. A
+`.git` sitting in `$HOME` is reported as an accident with the `rm -rf` command to
+undo it; nothing is checked out over files that are already there. An existing non-empty target directory stops the run instead of
 being clobbered. If the repository exists but has no remote, the entered URL is
 added as the remote instead. A credential for the host that already works is
 reused rather than asked for again.
