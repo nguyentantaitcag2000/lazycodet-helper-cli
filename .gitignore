@@ -1,0 +1,7 @@
+# Editor swap / backup files
+*.sw[a-p]
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db

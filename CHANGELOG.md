@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-08-15]
+
+### Added
+
+- `lazy fix.font [--check] [--dry-run] [-y] [--no-registry]` — one-shot fix for garbled Vietnamese / accented text on Windows. It reports the state of eight encoding settings, then writes a UTF-8 locale and `chcp 65001` to `~/.bashrc`, `encoding`/`fileencodings` (including `cp1258`) to `~/.vimrc`, 8-bit meta handling to `~/.inputrc` (keeping `$include /etc/inputrc`), `Charset=UTF-8` to `~/.minttyrc`, `core.quotepath`/`i18n.*`/`gui.encoding` via `git config --global`, `CodePage=65001` plus a console font to `HKCU\Console` and its per-title subkeys, and UTF-8 console encoding to the PowerShell profile resolved from `$PROFILE`. Every write is marker-guarded so re-running is a no-op, existing files are backed up to `<file>.lazy.bak`, and Linux/WSL is left untouched
+- `docs/` with one page per command (`branch.history`, `fix.font`, `git.remember`, `kill`, `update`) covering flags, example output, what each command writes and how to undo it
+
+### Changed
+
+- `README.md` is now a scannable overview only — a one-line description per command linking to its page in `docs/`, plus install instructions
+- `CLAUDE.md` documents the rule: `README.md` stays short, technical detail lives in `docs/<command>.md`, and a new command needs both a README one-liner and its own doc file
+
+### Fixed
+
+- Removed `.install.sh.swp`, a vim swap file that had been committed by accident, and added a `.gitignore` so editor swap and backup files stay out of the repo
+
 ## [2026-07-30]
 
 ### Added
