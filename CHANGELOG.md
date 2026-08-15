@@ -20,6 +20,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Removed `.install.sh.swp`, a vim swap file that had been committed by accident, and added a `.gitignore` so editor swap and backup files stay out of the repo
 
+## [2026-07-31]
+
+### Changed
+
+- `lazy git.remember` no longer fails when there is nothing to attach the credential to. If the directory is not a Git repository yet, it says so and asks for the repository URL (re-prompting when the URL is not http(s) or has no host), verifies the username and password/token against it, then clones the repository into a subdirectory (default name from the URL, editable at the prompt) and stores the credential inside that clone. The clone reuses the verified credential, so it never asks again; when only the URL-embedded fallback works, the remote URL is rewritten afterwards so no password stays in `.git/config`. An existing non-empty target directory stops the run with the `cd <dir> && lazy git.remember` hint instead of clobbering it.
+- `lazy git.remember`: a repository that exists but has no remote gets the entered URL added as the remote instead of erroring. Naming a remote that does not exist in a repository that has others still errors with the list of available remotes.
+- `lazy git.remember`: when a credential for the host already works but the repository still has to be cloned/wired up, it is reused instead of asking for the username and password again.
+- `lazy git.remember`: a repository whose `HEAD` is unborn (a `git init` that never fetched anything — the state the previous version left behind) no longer stops at "nothing to do". It offers to `git fetch` and check out the remote's default branch, falling back to `main`/`master`/the first remote branch when the remote advertises no `HEAD`. Declining, a branchless remote, or a missing terminal just prints the `git fetch` hint and exits 0.
+- `lazy git.remember`: that checkout is only offered when the worktree holds nothing but `.git`, since it lands in the current worktree rather than a subdirectory. A worktree rooted at `$HOME` warns that the `.git` was probably created by accident and prints the `rm -rf` command; any other worktree with files in it prints the manual `git fetch` command. Neither touches the directory.
+
 ## [2026-07-30]
 
 ### Added
@@ -31,6 +41,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `lazy` with no arguments now lists a description next to each command, column-aligned from the longest invocation so the descriptions stay flush as commands are added
 - Command names in the usage list are printed in bold cyan and descriptions dimmed, with color applied only on a TTY and skipped when `NO_COLOR` is set
 - Unknown commands print the usage list after the error instead of only the error
+
+### Fixed
+
+- `lazy update` printing `unexpected EOF while looking for matching '"'` / `syntax error: unexpected end of file` after a successful update. Bash parses scripts lazily by byte offset, so rewriting the launcher while it is still running made bash resume parsing the new file at a stale offset (landing inside the `COMMANDS` array). `lazy.sh` now `exec`s the command file instead of running it as a child, and `update.sh` re-execs itself from a temporary copy before touching the install dir, so no file being rewritten is still being read.
 
 ## [2026-07-26]
 
