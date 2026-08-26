@@ -8,6 +8,7 @@ and Git Bash (Windows).
 | Command | What it does |
 |---|---|
 | [`lazy branch.history`](docs/branch.history.md) | Pick a recently checked-out branch and switch to it |
+| [`lazy claude.auth`](docs/claude.auth.md) | Copy this machine's Claude Code login into a WSL distro |
 | [`lazy fix.font`](docs/fix.font.md) | Fix garbled Vietnamese / accented text on Windows |
 | [`lazy git.remember`](docs/git.remember.md) | Store this repo's Git login so it stops asking |
 | [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port |

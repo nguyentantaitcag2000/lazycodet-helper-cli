@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-08-26]
+
+### Added
+
+- `lazy claude.auth [distro] [-u <user>] [-y] [--list] [--check]` — copies the Claude Code login from the Windows host into a WSL distro so `claude` in there is signed in without a second browser round-trip. It reports both sides first (host token and expiry, the distro's user, config dir, credential state and CLI path), then writes `~/.claude/.credentials.json` at mode `600` and merges only `oauthAccount` plus `hasCompletedOnboarding` into the distro's `~/.claude.json`, leaving its project history and settings alone. Without a distro argument it prints a numbered list and accepts a number or a name (case-insensitive). The payload travels as base64 on `wsl.exe` stdin so no token reaches the distro's process list, the result is verified by comparing `sha256sum` on both sides, both touched files are backed up to `<file>.lazy.bak`, and a distro that already holds the same login exits without writing. Git Bash only — from inside WSL or on plain Linux it says where to run it instead
+- `docs/claude.auth.md` covering the flags, what is read and written on each side, how to undo it, and the shared-refresh-token caveat
+
 ## [2026-08-15]
 
 ### Added
