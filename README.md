@@ -11,7 +11,7 @@ and Git Bash (Windows).
 | [`lazy claude.auth`](docs/claude.auth.md) | Copy this machine's Claude Code login into a WSL distro |
 | [`lazy fix.font`](docs/fix.font.md) | Fix garbled Vietnamese / accented text on Windows |
 | [`lazy git.remember`](docs/git.remember.md) | Store this repo's Git login so it stops asking |
-| [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port |
+| [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port, in this machine or in another WSL distro |
 | [`lazy update`](docs/update.md) | Update the installed CLI |
 
 Run `lazy` to list them, or `lazy <command> --help` for the options.

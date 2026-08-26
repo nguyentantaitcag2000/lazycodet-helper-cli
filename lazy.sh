@@ -15,7 +15,7 @@ COMMANDS=(
     "lazy claude.auth [distro]|Copy this machine's Claude Code login into a WSL distro"
     "lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
     "lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
-    "lazy kill <port> [-y]|List the processes listening on <port> and kill them"
+    "lazy kill <port> [-y]|Kill what holds <port>, including other WSL distros and Windows"
     "lazy update|Update lazy to the latest version from origin"
 )
 

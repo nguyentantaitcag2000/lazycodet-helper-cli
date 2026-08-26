@@ -4,6 +4,67 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-08-26] - kill across WSL distros
+
+### Changed
+
+- `lazy kill <port>` now finds the owner of a port that is held from outside the
+  current machine. WSL2 runs every distro in one VM with a shared network
+  namespace but separate PID namespaces, so a port published by distro A is
+  genuinely taken for distro B while B's own `ss`/`lsof` show the socket with an
+  empty process column. That is what used to be reported as "no process is
+  listening on port 80" while `docker compose up` still refused to bind. When
+  the local scan finds no owner — or a socket nobody here owns, or a Windows
+  port forwarder — the search now widens on its own to every **running** WSL
+  distro (over `wsl.exe -d <distro> -u root`) and to the Windows host (over
+  `netstat.exe`/`taskkill.exe`), prints one table of everything that holds the
+  port, and asks before touching anything outside. Stopped distros are never
+  started just to be searched. Git Bash drills the same way in reverse: when the
+  Windows listener turns out to be the WSL relay, it looks inside the distros
+- `lazy kill` stops the **container** when the listener is the forwarder in
+  front of a published Docker port (`docker-proxy`, or `rootlesskit`/
+  `slirp4netns` on rootless Docker) instead of killing the forwarder, which
+  would free the port but leave the container running with its published port
+  silently broken. `docker start` undoes it
+- `lazy kill` asks about Linux targets and Windows targets separately, since
+  killing a Windows service is a much bigger hammer than killing a dev server.
+  `-y` still skips both
+- `lazy kill` refuses to kill Windows processes that only relay somebody else's
+  port or that Windows will not release — `wslrelay.exe` and friends (one
+  process forwards ports for *every* distro), Docker Desktop's plumbing,
+  `System`/`Idle`/`Registry` (`http.sys`, the usual owner of port 80) and
+  `svchost.exe`. They are listed with a `[skipped]` note and the fix to use
+  instead
+- `lazy kill` detects a bound port through `/proc/net/tcp` rather than inferring
+  it from whichever tool answered, so "the socket exists but nothing here owns
+  it" is reported as such instead of as a free port. This also improves
+  `--local`, which now says the port is held from elsewhere rather than that
+  nothing is listening
+- `lazy kill` reports as one table with a `WHERE` column, names the process or
+  container it killed, and probes with `ss` first, falling back to `lsof`,
+  `netstat` then `fuser`. The same worker script runs locally and inside other
+  distros, so every distro is inspected and cleaned up by identical code
+- New flags: `--list` (report only), `--local` (never look outside),
+  `--wsl`, `--host` and `-a`/`--all` to force the wider search
+
+### Added
+
+- `lazy kill` re-registers `WSLInterop` for the session when `systemd-binfmt`
+  has wiped it — the reason every `.exe` call fails with `Exec format error` on
+  some images, which would otherwise leave the other distros unreachable. It
+  says it did so and prints how to make it permanent; when it cannot (no root,
+  no passwordless `sudo`) it prints the one-line fix and keeps working locally
+- `lib/platform.sh` grew `is_wsl`, `win_exe_path`, `win_flag`, `wsl_interop_ok`,
+  `wsl_enable_interop` and `wsl_interop_permanent_hint`
+
+### Fixed
+
+- Windows executables invoked through WSL interop drain whatever stdin they
+  inherit, which swallowed a piped confirmation and left `lazy kill` blocked on
+  `/dev/tty` forever. Every Windows call now runs with `</dev/null`
+- `lazy kill` verifies a Windows-host kill against the Windows network stack
+  instead of against the Linux side, which knows nothing about it
+
 ## [2026-08-26]
 
 ### Added
