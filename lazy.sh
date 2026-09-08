@@ -13,7 +13,7 @@ COMMAND="$1"
 COMMANDS=(
     "lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
     "lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
-    "lazy claude.auth [distro]|Copy this machine's Claude Code login into a WSL distro"
+    "lazy claude.auth [distro]|Sync the Claude Code login between Windows and a WSL distro"
     "lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
     "lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "lazy kill <port> [-y]|Kill what holds <port>, including other WSL distros and Windows"

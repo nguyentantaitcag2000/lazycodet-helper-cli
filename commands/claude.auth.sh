@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copy the Claude Code login from the Windows host into a WSL distro.
+# Sync the Claude Code login between the Windows host and a WSL distro,
+# in whichever direction still holds a valid login.
 
 set -u
 
@@ -13,14 +14,18 @@ usage() {
     echo "  lazy claude.auth --list"
     echo "  lazy claude.auth [distro] --check"
     echo ""
-    echo "Copies the Claude Code login (~/.claude/.credentials.json) from the Windows"
-    echo "host into a WSL distro, so 'claude' in there is already signed in."
+    echo "Syncs the Claude Code login (~/.claude/.credentials.json) between the Windows"
+    echo "host and a WSL distro. The direction is decided by which side is still signed"
+    echo "in: a valid host login is pushed into the distro, and when the host token has"
+    echo "expired while the distro's is still good, it is pulled back the other way."
     echo ""
     echo "Options:"
+    echo "      --push         Force host -> distro"
+    echo "      --pull         Force distro -> host"
     echo "  -u, --user <name>  Target this Linux user instead of the distro default"
     echo "  -y, --yes          Skip the confirmation prompt"
     echo "      --list         List the WSL distros and exit"
-    echo "      --check        Report both sides, write nothing"
+    echo "      --check        Report both sides and the direction, write nothing"
     echo "  -h, --help         Show this help"
 }
 
@@ -29,12 +34,20 @@ WSL_USER=""
 ASSUME_YES=0
 DO_LIST=0
 CHECK_ONLY=0
+FORCED=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -y|--yes) ASSUME_YES=1 ;;
         --list) DO_LIST=1 ;;
         --check) CHECK_ONLY=1 ;;
+        --push|--pull)
+            if [ -n "$FORCED" ] && [ "$FORCED" != "${1#--}" ]; then
+                echo "Error: --push and --pull are opposites; pick one."
+                exit 1
+            fi
+            FORCED="${1#--}"
+            ;;
         -u|--user)
             shift
             if [ $# -eq 0 ]; then
@@ -67,12 +80,9 @@ say_warn() { printf '  %s%s%s\n' "$c_warn" "$1" "$c_reset"; }
 say_dim()  { printf '  %s%s%s\n' "$c_dim" "$1" "$c_reset"; }
 say_err()  { printf '%sError: %s%s\n' "$c_err" "$1" "$c_reset" >&2; }
 
-# ----------------------------------------------------------------- host side
+NOW_MS="$(( $(date +%s) * 1000 ))"
 
-# Where Claude Code keeps its config. CLAUDE_CONFIG_DIR wins when it is set.
-HOST_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
-HOST_CRED="${HOST_DIR}/.credentials.json"
-HOST_CONFIG="${HOME}/.claude.json"
+# --------------------------------------------------------------- credentials
 
 # A credentials file is only useful if accessToken actually holds something.
 # An empty string is what a logout leaves behind, and on disk that looks
@@ -81,29 +91,75 @@ cred_has_token() {
     grep -qE '"accessToken"[[:space:]]*:[[:space:]]*"[^"]' "$1" 2>/dev/null
 }
 
-cred_expiry() {
-    local ms
-    ms="$(grep -oE '"expiresAt"[[:space:]]*:[[:space:]]*[0-9]+' "$1" 2>/dev/null |
-          grep -oE '[0-9]+$' | head -1)"
-    [ -n "$ms" ] || return 1
-    date -d "@$((ms / 1000))" '+%Y-%m-%d %H:%M' 2>/dev/null
+# expiresAt is milliseconds since the epoch.
+cred_expiry_ms() {
+    grep -oE '"expiresAt"[[:space:]]*:[[:space:]]*[0-9]+' "$1" 2>/dev/null |
+        grep -oE '[0-9]+$' | head -1
 }
 
-check_host_credentials() {
-    if [ ! -f "$HOST_CRED" ]; then
-        say_err "No Claude Code login on this host -> ${HOST_CRED}"
-        echo "Run 'claude' on Windows and sign in first." >&2
-        return 1
-    fi
-
-    if ! cred_has_token "$HOST_CRED"; then
-        say_err "Host credentials hold no token -> ${HOST_CRED}"
-        echo "That is the logged-out state. Run 'claude' on Windows and sign in first." >&2
-        return 1
-    fi
-
-    return 0
+format_expiry() {
+    [ -n "$1" ] || return 1
+    date -d "@$(( $1 / 1000 ))" '+%Y-%m-%d %H:%M' 2>/dev/null
 }
+
+# Both sides are described with the same four words. Expiry is advisory - Claude
+# Code can still refresh an expired access token - but it is the only signal
+# available without launching the CLI, and it is what picks the direction.
+classify_cred() {
+    local kind="$1"
+    local expires="$2"
+
+    case "$kind" in
+        missing) echo missing; return ;;
+        empty)   echo empty;   return ;;
+    esac
+
+    if [ -n "$expires" ] && [ "$expires" -le "$NOW_MS" ]; then
+        echo expired
+    else
+        echo valid
+    fi
+}
+
+state_rank() {
+    case "$1" in
+        valid)   echo 3 ;;
+        expired) echo 2 ;;
+        empty)   echo 1 ;;
+        *)       echo 0 ;;
+    esac
+}
+
+report_state() {
+    local state="$1"
+    local expires="$2"
+    local when
+
+    when="$(format_expiry "$expires" || true)"
+
+    case "$state" in
+        valid)
+            if [ -n "$when" ]; then
+                say_ok "signed in (access token valid until ${when})"
+            else
+                say_ok "signed in"
+            fi
+            ;;
+        expired)
+            say_warn "signed in but the access token expired ${when} (a refresh may still work)" ;;
+        empty)
+            say_warn "credentials file present but no token (logged out)" ;;
+        missing)
+            say_warn "no credentials file" ;;
+    esac
+}
+
+# ----------------------------------------------------------------- host side
+
+# Where Claude Code keeps its config. CLAUDE_CONFIG_DIR wins when it is set.
+HOST_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+HOST_CRED="${HOST_DIR}/.credentials.json"
+HOST_CONFIG="${HOME}/.claude.json"
 
 # ------------------------------------------------------------------ wsl side
 
@@ -244,6 +300,7 @@ if [ -f "$cred" ]; then
         echo "CRED=empty"
     fi
     echo "SHA=$(sha256sum < "$cred" | cut -d' ' -f1)"
+    echo "EXPIRES=$(grep -oE '"expiresAt"[[:space:]]*:[[:space:]]*[0-9]+' "$cred" | grep -oE '[0-9]+$' | head -1)"
 else
     echo "CRED=missing"
 fi
@@ -263,7 +320,104 @@ probe_value() {
     printf '%s\n' "$1" | grep -E "^$2=" | head -1 | cut -d= -f2-
 }
 
-# ------------------------------------------------------------------- install
+# ------------------------------------------------------------------ transfer
+
+# The config merge runs on whichever side is being written, so it is written
+# once here and both eval'd locally and shipped into the distro on stdin.
+merge_snippet() {
+    cat <<'MERGE_SNIPPET'
+# Reads CFG_B64 from the environment - base64 of the source ~/.claude.json - and
+# folds only the account and onboarding keys into the target config. The token
+# alone still lands you on the login/onboarding screen: Claude Code also reads
+# oauthAccount and hasCompletedOnboarding from ~/.claude.json. The rest of the
+# target file - project history, MCP servers, settings - is left as it was.
+merge_with_python() {
+    printf '%s' "$CFG_B64" | base64 -d | python3 -c '
+import json, os, sys
+
+target = sys.argv[1]
+src = json.load(sys.stdin)
+
+try:
+    with open(target) as fh:
+        cur = json.load(fh)
+except Exception:
+    cur = {}
+
+if not isinstance(cur, dict):
+    cur = {}
+
+if "oauthAccount" in src:
+    cur["oauthAccount"] = src["oauthAccount"]
+cur["hasCompletedOnboarding"] = True
+for key in ("lastOnboardingVersion", "userID"):
+    if key in src and key not in cur:
+        cur[key] = src[key]
+
+tmp = target + ".lazy.tmp"
+with open(tmp, "w") as fh:
+    json.dump(cur, fh, indent=2)
+os.chmod(tmp, 0o600)
+os.replace(tmp, target)
+' "$1"
+}
+
+merge_with_node() {
+    printf '%s' "$CFG_B64" | base64 -d | node -e '
+const fs = require("fs");
+const target = process.argv[1];
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", c => { raw += c; });
+process.stdin.on("end", () => {
+  const src = JSON.parse(raw);
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(target, "utf8")); } catch (e) { cur = {}; }
+  if (!cur || typeof cur !== "object" || Array.isArray(cur)) cur = {};
+  if (src.oauthAccount) cur.oauthAccount = src.oauthAccount;
+  cur.hasCompletedOnboarding = true;
+  for (const k of ["lastOnboardingVersion", "userID"]) {
+    if (k in src && !(k in cur)) cur[k] = src[k];
+  }
+  const tmp = target + ".lazy.tmp";
+  fs.writeFileSync(tmp, JSON.stringify(cur, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, target);
+});
+' "$1"
+}
+
+merge_claude_config() {
+    config="$1"
+
+    if [ -z "${CFG_B64:-}" ]; then
+        echo "MERGE=skipped-no-source-config"
+        return 0
+    fi
+
+    if [ -s "$config" ]; then
+        cp -p "$config" "${config}.lazy.bak"
+        echo "CONFIG_BACKUP=${config}.lazy.bak"
+    fi
+
+    # Stderr is dropped on purpose: on Windows "python3" is often the Microsoft
+    # Store alias stub, which is on PATH, fails loudly and means nothing here.
+    # The exit code is what decides whether to fall through to node.
+    if command -v python3 >/dev/null 2>&1 && merge_with_python "$config" 2>/dev/null; then
+        echo "MERGE=python3"
+    elif command -v node >/dev/null 2>&1 && merge_with_node "$config" 2>/dev/null; then
+        echo "MERGE=node"
+    elif command -v python3 >/dev/null 2>&1 || command -v node >/dev/null 2>&1; then
+        rm -f "${config}.lazy.tmp"
+        echo "MERGE=failed"
+    else
+        rm -f "${config}.lazy.tmp"
+        echo "MERGE=skipped-no-json-tool"
+    fi
+}
+MERGE_SNIPPET
+}
+
+eval "$(merge_snippet)"
 
 # The credentials travel as base64 on stdin rather than as arguments: nothing
 # secret shows up in the distro's process list, and no CRLF translation can
@@ -276,6 +430,7 @@ push_credentials() {
     {
         printf "CRED_B64='%s'\n" "$cred_b64"
         printf "CFG_B64='%s'\n" "$cfg_b64"
+        merge_snippet
         cat <<'REMOTE_PUSH'
 set -eu
 umask 077
@@ -295,85 +450,58 @@ mv -f "${cred}.lazy.tmp" "$cred"
 echo "WROTE=$cred"
 echo "SHA=$(sha256sum < "$cred" | cut -d' ' -f1)"
 
-# The token alone still lands you on the login/onboarding screen: Claude Code
-# also reads oauthAccount and hasCompletedOnboarding from ~/.claude.json. Merge
-# just those keys - the rest of the host file is Windows-specific history.
-config="$HOME/.claude.json"
-if [ -z "$CFG_B64" ]; then
-    echo "MERGE=skipped-no-host-config"
+merge_claude_config "$HOME/.claude.json"
+REMOTE_PUSH
+    } | run_in_distro "$distro" bash -s 2>&1 | tr -d '\r'
+}
+
+# The other direction. Reading is a separate step from writing so the host file
+# is only touched once the distro has actually handed over a payload.
+read_from_distro() {
+    local distro="$1"
+
+    {
+        cat <<'REMOTE_PULL'
+set -u
+dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+cred="$dir/.credentials.json"
+
+if [ ! -f "$cred" ]; then
+    echo "ERR=no-credentials"
     exit 0
 fi
 
-merge_with_python() {
-    printf '%s' "$CFG_B64" | base64 -d | python3 -c '
-import json, os, sys
+echo "CRED_B64=$(base64 -w0 < "$cred")"
+echo "SHA=$(sha256sum < "$cred" | cut -d' ' -f1)"
 
-target = sys.argv[1]
-host = json.load(sys.stdin)
-
-try:
-    with open(target) as fh:
-        cur = json.load(fh)
-except Exception:
-    cur = {}
-
-if not isinstance(cur, dict):
-    cur = {}
-
-if "oauthAccount" in host:
-    cur["oauthAccount"] = host["oauthAccount"]
-cur["hasCompletedOnboarding"] = True
-for key in ("lastOnboardingVersion", "userID"):
-    if key in host and key not in cur:
-        cur[key] = host[key]
-
-tmp = target + ".lazy.tmp"
-with open(tmp, "w") as fh:
-    json.dump(cur, fh, indent=2)
-os.chmod(tmp, 0o600)
-os.replace(tmp, target)
-' "$config"
-}
-
-merge_with_node() {
-    printf '%s' "$CFG_B64" | base64 -d | node -e '
-const fs = require("fs");
-const target = process.argv[1];
-let raw = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", c => { raw += c; });
-process.stdin.on("end", () => {
-  const host = JSON.parse(raw);
-  let cur = {};
-  try { cur = JSON.parse(fs.readFileSync(target, "utf8")); } catch (e) { cur = {}; }
-  if (!cur || typeof cur !== "object" || Array.isArray(cur)) cur = {};
-  if (host.oauthAccount) cur.oauthAccount = host.oauthAccount;
-  cur.hasCompletedOnboarding = true;
-  for (const k of ["lastOnboardingVersion", "userID"]) {
-    if (k in host && !(k in cur)) cur[k] = host[k];
-  }
-  const tmp = target + ".lazy.tmp";
-  fs.writeFileSync(tmp, JSON.stringify(cur, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, target);
-});
-' "$config"
-}
-
+config="$HOME/.claude.json"
 if [ -s "$config" ]; then
-    cp -p "$config" "${config}.lazy.bak"
-    echo "CONFIG_BACKUP=${config}.lazy.bak"
+    echo "CFG_B64=$(base64 -w0 < "$config")"
 fi
+REMOTE_PULL
+    } | run_in_distro "$distro" bash -s 2>/dev/null | tr -d '\r'
+}
 
-if command -v python3 >/dev/null 2>&1 && merge_with_python; then
-    echo "MERGE=python3"
-elif command -v node >/dev/null 2>&1 && merge_with_node; then
-    echo "MERGE=node"
-else
-    rm -f "${config}.lazy.tmp"
-    echo "MERGE=skipped-no-json-tool"
-fi
-REMOTE_PUSH
-    } | run_in_distro "$distro" bash -s 2>&1 | tr -d '\r'
+# Always called through $(...), so the umask stays inside that subshell.
+install_on_host() {
+    local cred_b64="$1"
+
+    umask 077
+    mkdir -p "$HOST_DIR" || return 1
+
+    if [ -s "$HOST_CRED" ]; then
+        cp -p "$HOST_CRED" "${HOST_CRED}.lazy.bak"
+        echo "BACKUP=${HOST_CRED}.lazy.bak"
+    fi
+
+    printf '%s' "$cred_b64" | base64 -d > "${HOST_CRED}.lazy.tmp" || return 1
+    chmod 600 "${HOST_CRED}.lazy.tmp"
+    mv -f "${HOST_CRED}.lazy.tmp" "$HOST_CRED" || return 1
+    echo "WROTE=${HOST_CRED}"
+    echo "SHA=$(sha256sum < "$HOST_CRED" | cut -d' ' -f1)"
+
+    CFG_B64="$2"
+    merge_claude_config "$HOST_CONFIG"
 }
 
 # ---------------------------------------------------------------------- main
@@ -381,10 +509,10 @@ REMOTE_PUSH
 if ! is_git_bash; then
     if grep -qi microsoft /proc/version 2>/dev/null; then
         say_err "You are already inside WSL."
-        echo "Run this from Git Bash on the Windows host - that is where the login lives:" >&2
+        echo "Run this from Git Bash on the Windows host - it drives both sides from there:" >&2
         echo "  lazy claude.auth ${DISTRO:-<distro>}" >&2
     else
-        say_err "This copies a Windows login into WSL, so it only runs on Windows (Git Bash)."
+        say_err "This syncs a Windows login with WSL, so it only runs on Windows (Git Bash)."
     fi
     exit 1
 fi
@@ -402,21 +530,19 @@ if [ "$DO_LIST" -eq 1 ]; then
     exit 0
 fi
 
+HOST_KIND=missing
+HOST_SHA=""
+HOST_EXPIRES=""
+if [ -f "$HOST_CRED" ]; then
+    if cred_has_token "$HOST_CRED"; then HOST_KIND=token; else HOST_KIND=empty; fi
+    HOST_SHA="$(sha256sum < "$HOST_CRED" | cut -d' ' -f1)"
+    HOST_EXPIRES="$(cred_expiry_ms "$HOST_CRED")"
+fi
+HOST_STATE="$(classify_cred "$HOST_KIND" "$HOST_EXPIRES")"
+
 printf '%sHost (Windows):%s\n' "$c_bold" "$c_reset"
 say_dim "$HOST_CRED"
-
-if [ -f "$HOST_CRED" ] && cred_has_token "$HOST_CRED"; then
-    HOST_EXPIRY="$(cred_expiry "$HOST_CRED" || true)"
-    if [ -n "$HOST_EXPIRY" ]; then
-        say_ok "signed in (access token valid until ${HOST_EXPIRY})"
-    else
-        say_ok "signed in"
-    fi
-elif [ -f "$HOST_CRED" ]; then
-    say_warn "credentials file present but no token (logged out)"
-else
-    say_warn "no credentials file"
-fi
+report_state "$HOST_STATE" "$HOST_EXPIRES"
 echo ""
 
 if [ -z "$DISTRO" ]; then
@@ -445,41 +571,108 @@ D_USER="$(probe_value "$PROBE" USER)"
 D_DIR="$(probe_value "$PROBE" DIR)"
 D_CRED="$(probe_value "$PROBE" CRED)"
 D_SHA="$(probe_value "$PROBE" SHA)"
+D_EXPIRES="$(probe_value "$PROBE" EXPIRES)"
 D_CLI="$(probe_value "$PROBE" CLI)"
+D_STATE="$(classify_cred "$D_CRED" "$D_EXPIRES")"
 
 say_dim "user: ${D_USER}   config: ${D_DIR}"
-
-case "$D_CRED" in
-    token)   say_ok "already signed in" ;;
-    empty)   say_warn "credentials file present but no token (logged out)" ;;
-    missing) say_warn "no credentials file" ;;
-esac
+report_state "$D_STATE" "$D_EXPIRES"
 
 if [ "$D_CLI" = "missing" ]; then
-    say_warn "claude CLI not found here - the login is copied anyway, install it later"
+    say_warn "claude CLI not found here"
 else
     say_dim "cli:  ${D_CLI}"
 fi
 echo ""
 
-HOST_SHA=""
-if [ -f "$HOST_CRED" ]; then
-    HOST_SHA="$(sha256sum < "$HOST_CRED" | cut -d' ' -f1)"
+# ----------------------------------------------------------------- direction
+
+# Whichever side is in better shape is the source. Two sides in the same shape
+# fall back to the later expiry: that is the one refreshed most recently.
+DIRECTION=""
+REASON=""
+
+if [ -n "$D_SHA" ] && [ "$D_SHA" = "$HOST_SHA" ]; then
+    DIRECTION="insync"
+else
+    H_RANK="$(state_rank "$HOST_STATE")"
+    D_RANK="$(state_rank "$D_STATE")"
+
+    if [ "$H_RANK" -gt "$D_RANK" ]; then
+        DIRECTION="push"
+        REASON="the host holds the usable login"
+    elif [ "$D_RANK" -gt "$H_RANK" ]; then
+        DIRECTION="pull"
+        REASON="the host login is not usable and ${DISTRO}'s is"
+    elif [ "$H_RANK" -lt 2 ]; then
+        DIRECTION="none"
+    elif [ -n "$D_EXPIRES" ] && [ -n "$HOST_EXPIRES" ] && [ "$D_EXPIRES" -gt "$HOST_EXPIRES" ]; then
+        DIRECTION="pull"
+        REASON="${DISTRO} holds the more recently refreshed token"
+    else
+        DIRECTION="push"
+        REASON="the host holds the more recently refreshed token"
+    fi
 fi
 
-if [ "$CHECK_ONLY" -eq 1 ]; then
-    if [ -n "$D_SHA" ] && [ "$D_SHA" = "$HOST_SHA" ]; then
-        echo "Both sides hold the same login - nothing to copy."
-    else
-        echo "Run 'lazy claude.auth ${DISTRO}' to copy the host login over."
-    fi
+OVERRIDDEN=""
+if [ -n "$FORCED" ] && [ "$FORCED" != "$DIRECTION" ]; then
+    OVERRIDDEN="$DIRECTION"
+    DIRECTION="$FORCED"
+    REASON="forced with --${FORCED}"
+fi
+
+case "$DIRECTION" in
+    push) SRC_LABEL="host";   DST_LABEL="$DISTRO"; SRC_STATE="$HOST_STATE" ;;
+    pull) SRC_LABEL="$DISTRO"; DST_LABEL="host";   SRC_STATE="$D_STATE" ;;
+    *)    SRC_LABEL="";        DST_LABEL="";       SRC_STATE="" ;;
+esac
+
+if [ "$DIRECTION" = "insync" ]; then
+    echo "Both sides hold the same login - nothing to copy."
     exit 0
 fi
 
-check_host_credentials || exit 1
+if [ "$DIRECTION" = "none" ]; then
+    say_err "Neither side holds a login to copy."
+    echo "Sign in on one of them first - 'claude' on Windows, or inside ${DISTRO} -" >&2
+    echo "then run this again." >&2
+    exit 1
+fi
 
-if [ "$D_CRED" = "token" ] && [ "$D_SHA" = "$HOST_SHA" ]; then
-    echo "${DISTRO} already holds this exact login - nothing to do."
+printf '%sDirection:%s %s -> %s' "$c_bold" "$c_reset" "$SRC_LABEL" "$DST_LABEL"
+if [ -n "$REASON" ]; then
+    printf ' %s(%s)%s' "$c_dim" "$REASON" "$c_reset"
+fi
+printf '\n'
+
+if [ -n "$OVERRIDDEN" ]; then
+    case "$OVERRIDDEN" in
+        insync) say_dim "both sides already hold this login" ;;
+        none)   say_dim "neither side looks signed in" ;;
+        *)      say_dim "left alone, this run would have gone the other way (${OVERRIDDEN})" ;;
+    esac
+fi
+
+if [ "$SRC_STATE" = "expired" ]; then
+    say_warn "the source token is expired too - copying it only helps if its refresh token still works"
+elif [ "$SRC_STATE" != "valid" ]; then
+    say_err "The ${SRC_LABEL} side has no token to copy."
+    exit 1
+fi
+
+if [ "$DIRECTION" = "push" ] && [ "$D_CLI" = "missing" ]; then
+    say_warn "no claude CLI in ${DISTRO} - the login is copied anyway, install it later"
+fi
+echo ""
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+    # Repeat the forcing flag: without it the same run would pick its own way.
+    if [ -n "$OVERRIDDEN" ]; then
+        echo "Run 'lazy claude.auth ${DISTRO} --${DIRECTION}' to copy ${SRC_LABEL} -> ${DST_LABEL}."
+    else
+        echo "Run 'lazy claude.auth ${DISTRO}' to copy ${SRC_LABEL} -> ${DST_LABEL}."
+    fi
     exit 0
 fi
 
@@ -488,7 +681,11 @@ if [ "$ASSUME_YES" -ne 1 ]; then
         say_err "Refusing to overwrite credentials without confirmation (no terminal). Use -y."
         exit 1
     fi
-    printf 'Copy this login into %s (%s)? [y/N] ' "$DISTRO" "${D_DIR}/.credentials.json"
+    if [ "$DIRECTION" = "push" ]; then
+        printf 'Copy the host login into %s (%s)? [y/N] ' "$DISTRO" "${D_DIR}/.credentials.json"
+    else
+        printf "Copy %s's login onto this host (%s)? [y/N] " "$DISTRO" "$HOST_CRED"
+    fi
     read -r REPLY_YN
     case "$REPLY_YN" in
         y|Y|yes|YES) ;;
@@ -497,14 +694,29 @@ if [ "$ASSUME_YES" -ne 1 ]; then
     echo ""
 fi
 
-CRED_B64="$(base64 -w0 < "$HOST_CRED")"
-CFG_B64=""
-if [ -s "$HOST_CONFIG" ]; then
-    CFG_B64="$(base64 -w0 < "$HOST_CONFIG")"
-fi
+if [ "$DIRECTION" = "push" ]; then
+    CRED_B64="$(base64 -w0 < "$HOST_CRED")"
+    CFG_B64=""
+    if [ -s "$HOST_CONFIG" ]; then
+        CFG_B64="$(base64 -w0 < "$HOST_CONFIG")"
+    fi
 
-RESULT="$(push_credentials "$DISTRO" "$CRED_B64" "$CFG_B64")"
-STATUS=$?
+    RESULT="$(push_credentials "$DISTRO" "$CRED_B64" "$CFG_B64")"
+    STATUS=$?
+    WANT_SHA="$HOST_SHA"
+else
+    PULLED="$(read_from_distro "$DISTRO")"
+    if [ -z "$PULLED" ] || [ -n "$(probe_value "$PULLED" ERR)" ]; then
+        say_err "Could not read the credentials out of ${DISTRO}."
+        exit 1
+    fi
+
+    RESULT="$(install_on_host \
+        "$(probe_value "$PULLED" CRED_B64)" \
+        "$(probe_value "$PULLED" CFG_B64)")"
+    STATUS=$?
+    WANT_SHA="$(probe_value "$PULLED" SHA)"
+fi
 
 if [ "$STATUS" -ne 0 ]; then
     say_err "Copy failed."
@@ -517,8 +729,8 @@ BACKUP="$(probe_value "$RESULT" BACKUP)"
 CFG_BACKUP="$(probe_value "$RESULT" CONFIG_BACKUP)"
 MERGE="$(probe_value "$RESULT" MERGE)"
 
-if [ "$NEW_SHA" != "$HOST_SHA" ]; then
-    say_err "The copy landed but does not match the host file."
+if [ "$NEW_SHA" != "$WANT_SHA" ]; then
+    say_err "The copy landed but does not match the source file."
     printf '%s\n' "$RESULT" | sed 's/^/  /' >&2
     exit 1
 fi
@@ -527,17 +739,23 @@ say_ok "credentials copied and verified (sha256 matches)"
 
 case "$MERGE" in
     python3|node)
-        say_ok "account + onboarding flags merged into ~/.claude.json" ;;
+        say_ok "account + onboarding flags merged into ~/.claude.json on the ${DST_LABEL} side" ;;
     skipped-no-json-tool)
-        say_warn "no python3 or node in ${DISTRO}: ~/.claude.json untouched, claude may run onboarding once" ;;
-    skipped-no-host-config)
-        say_warn "no ~/.claude.json on the host to merge from" ;;
+        say_warn "no python3 or node on the ${DST_LABEL} side: ~/.claude.json untouched, claude may run onboarding once" ;;
+    failed)
+        say_warn "could not rewrite ~/.claude.json on the ${DST_LABEL} side: left untouched, claude may run onboarding once" ;;
+    skipped-no-source-config)
+        say_warn "no ~/.claude.json on the ${SRC_LABEL} side to merge from" ;;
 esac
 
 [ -n "$BACKUP" ] && say_dim "previous credentials: ${BACKUP}"
 [ -n "$CFG_BACKUP" ] && say_dim "previous config:      ${CFG_BACKUP}"
 
 echo ""
-echo "Done. Try it:"
-echo "  wsl -d ${DISTRO}"
-echo "  claude"
+if [ "$DIRECTION" = "push" ]; then
+    echo "Done. Try it:"
+    echo "  wsl -d ${DISTRO}"
+    echo "  claude"
+else
+    echo "Done. Try 'claude' here on Windows."
+fi

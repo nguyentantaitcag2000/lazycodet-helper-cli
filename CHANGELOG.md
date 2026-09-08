@@ -6,6 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [2026-09-08]
 
+### Changed
+
+- `lazy claude.auth [distro]` now syncs in both directions instead of only
+  pushing the Windows login into WSL. It reads `~/.claude/.credentials.json` on
+  both sides — never launching `claude`, which would prompt for a login itself —
+  and copies from whichever side still holds a live token: host → distro as
+  before, or distro → host when the host token has expired (or was logged out)
+  while the distro's is still good. Two valid sides fall back to the later
+  `expiresAt`, identical files are left alone, and with no token anywhere it
+  stops and says to log in on one side first. `--push` / `--pull` force a
+  direction, `--check` reports the one it would take. The `~/.claude.json`
+  account and onboarding merge, the base64-over-stdin transfer, the `sha256sum`
+  verification and the `.lazy.bak` backups now apply to whichever side is being
+  written.
+
 ### Added
 
 - `lazy agent.sync [project] [--check]` — creates portable relative symlinks from
