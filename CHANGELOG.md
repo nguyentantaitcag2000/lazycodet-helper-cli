@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-08]
+
+### Added
+
+- `lazy agent.sync [project] [--check]` — creates portable relative symlinks from
+  `AGENTS.md` and `.agents/skills/*` to `CLAUDE.md` and `.claude/skills/*` in any
+  Git repository. It enables repository-local `core.symlinks`, supports projects
+  without skills, repairs managed links, removes stale managed skill links, and
+  refuses to overwrite independent content. Check mode performs the same
+  validation without writing.
+- `docs/agent.sync.md` covering managed paths, safety, platform requirements,
+  check mode, and undo steps.
+
 ## [2026-08-26] - kill across WSL distros
 
 ### Changed

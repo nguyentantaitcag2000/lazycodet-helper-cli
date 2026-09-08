@@ -21,3 +21,6 @@ jobs:
       - name: Run shellcheck
         run: |
           find . -name "*.sh" -exec shellcheck {} \;
+
+      - name: Test agent.sync
+        run: bash tests/agent.sync.test.sh

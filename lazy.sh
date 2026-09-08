@@ -11,6 +11,7 @@ COMMAND="$1"
 # Columns are aligned from the longest invocation so adding a command
 # never leaves the descriptions ragged.
 COMMANDS=(
+    "lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
     "lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
     "lazy claude.auth [distro]|Copy this machine's Claude Code login into a WSL distro"
     "lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"

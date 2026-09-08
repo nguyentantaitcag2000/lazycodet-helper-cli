@@ -7,6 +7,7 @@ and Git Bash (Windows).
 
 | Command | What it does |
 |---|---|
+| [`lazy agent.sync`](docs/agent.sync.md) | Link Codex agent config to the Claude-owned source files in any Git project |
 | [`lazy branch.history`](docs/branch.history.md) | Pick a recently checked-out branch and switch to it |
 | [`lazy claude.auth`](docs/claude.auth.md) | Copy this machine's Claude Code login into a WSL distro |
 | [`lazy fix.font`](docs/fix.font.md) | Fix garbled Vietnamese / accented text on Windows |
