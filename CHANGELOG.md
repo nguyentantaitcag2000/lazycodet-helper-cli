@@ -8,6 +8,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `lazy caffeinate` (macOS): lists every `caffeinate` process preventing the Mac
+  from sleeping and stops the ones you pick. Each row shows when it started, how
+  long it has been running, how much of its timeout is actually left, which
+  assertions it holds, and which process started it - so an assertion left
+  behind by an interrupted session can be traced back to its parent, or flagged
+  as orphaned when that parent is already gone. Remaining time is read from the
+  countdown in `pmset -g assertions` rather than inferred from `-t`, falling
+  back to the subtraction only if that line is absent. The default view is an
+  interactive list with a nano-style key menu (`[1-9]` stop one, `[K]` stop all,
+  `[R]` refresh, `[Q]` quit) drawn on the alternate screen; `--list`,
+  `--kill <pid>`, `--kill-all` and `-y` cover scripted use, and no terminal
+  means `--list`. Processes are matched on the executable name, never on the
+  command line, because `pgrep -f caffeinate` also matches the shell that
+  launched one - and can match the search itself.
 - Official macOS support with explicit platform detection, installation under
   `/usr/local/lib/lazy`, the `/usr/local/bin/lazy` entry point, a dedicated
   update path, Homebrew guidance for `fzf`, and macOS listener verification in

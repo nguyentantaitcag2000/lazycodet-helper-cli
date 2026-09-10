@@ -15,17 +15,23 @@ Status meanings:
 |---|---|---|---|---|
 | `agent.sync` | Supported | Supported | Supported | Supported¹ |
 | `branch.history` | Supported | Supported | Supported | Supported |
-| `claude.auth` | Excluded² | Excluded² | Excluded² | Supported |
-| `fix.font` | Excluded³ | Excluded³ | Excluded³ | Supported |
+| `caffeinate` | Excluded² | Excluded² | Supported | Excluded² |
+| `claude.auth` | Excluded³ | Excluded³ | Excluded³ | Supported |
+| `fix.font` | Excluded⁴ | Excluded⁴ | Excluded⁴ | Supported |
 | `git.remember` | Supported | Supported | Supported | Supported |
 | `kill` | Supported (local) | Supported (local, WSL distros, Windows host) | Supported (local) | Supported (Windows host and WSL distros) |
 | `update` | Supported | Supported | Supported | Supported |
 
 1. Creating native Windows symlinks requires Developer Mode or the **Create
    symbolic links** privilege.
-2. `claude.auth` drives `wsl.exe` from the Windows host. Linux and macOS do not
+2. `caffeinate` reports and stops macOS `caffeinate` processes through
+   `pmset -g assertions`. Neither tool exists elsewhere. Linux and WSL express
+   the same idea as logind inhibitor locks (`systemd-inhibit`) and Windows as
+   `powercfg /requests`; those are different enough models that reporting them
+   under this command would misdescribe them, so each would be its own command.
+3. `claude.auth` drives `wsl.exe` from the Windows host. Linux and macOS do not
    provide that workflow; from inside WSL it must still be launched on the host.
-3. `fix.font` changes Windows registry, console, PowerShell, and mintty settings.
+4. `fix.font` changes Windows registry, console, PowerShell, and mintty settings.
    Those settings do not exist on Linux, WSL, or macOS.
 
 The source of truth for runtime availability is the command registry in

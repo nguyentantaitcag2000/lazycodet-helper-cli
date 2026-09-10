@@ -33,6 +33,7 @@ COMMAND="$1"
 COMMANDS=(
     "agent.sync|linux,wsl,git-bash,macos|lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
     "branch.history|linux,wsl,git-bash,macos|lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
+    "caffeinate|macos|lazy caffeinate [--list] [--kill-all]|List and stop the caffeinate processes keeping this Mac awake"
     "claude.auth|git-bash|lazy claude.auth [distro]|Sync the Claude Code login between Windows and a WSL distro"
     "fix.font|git-bash|lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
     "git.remember|linux,wsl,git-bash,macos|lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"

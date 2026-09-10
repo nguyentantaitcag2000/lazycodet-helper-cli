@@ -1,0 +1,39 @@
+2026-09-10 06:21:02 +0700 
+Assertion status system-wide:
+   BackgroundTask                 0
+   PreventDiskIdle                1
+   ApplePushServiceTask           0
+   UserIsActive                   1
+   PreventUserIdleDisplaySleep    1
+   PreventSystemSleep             0
+   ExternalMedia                  0
+   PreventUserIdleSystemSleep     1
+   NetworkClientActive            0
+Listed by owning process:
+   pid 95(powerd): [0x00012da500018375] 00:13:51 PreventUserIdleSystemSleep named: "Powerd - Prevent sleep while display is on"  
+   pid 41651(caffeinate): [0x0000e0e00001a4fc] 06:18:00 PreventUserIdleSystemSleep named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 21600 secs
+	Localized=THE CAFFEINATE TOOL IS PREVENTING SLEEP.
+	Timeout will fire in 6120 secs Action=TimeoutActionRelease
+   pid 41651(caffeinate): [0x0000e0e00005a4fd] 06:18:00 PreventUserIdleDisplaySleep named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 21600 secs
+	Timeout will fire in 6120 secs Action=TimeoutActionRelease
+   pid 41651(caffeinate): [0x0000e0e00007a4fe] 06:18:00 PreventSystemSleep named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 21600 secs
+	Timeout will fire in 6120 secs Action=TimeoutActionRelease
+   pid 41651(caffeinate): [0x0000e0e00009a4ff] 06:18:00 UserIsActive named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 21600 secs
+	Timeout will fire in 6120 secs Action=TimeoutActionRelease
+   pid 41651(caffeinate): [0x0000e0e0000fa500] 06:18:00 PreventDiskIdle named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 21600 secs
+	Timeout will fire in 6120 secs Action=TimeoutActionRelease
+   pid 149(WindowServer): [0x00012d8c00098358] 00:00:00 UserIsActive named: "com.apple.iohideventsystem.queue.tickle serviceID:1000007a1"  
+	Timeout will fire in 120 secs Action=TimeoutActionRelease
+   pid 73350(caffeinate): [0x00014c2300018a31] 00:00:11 PreventUserIdleSystemSleep named: "caffeinate command-line tool"  
+	Details: caffeinate asserting for 300 secs
+	Localized=THE CAFFEINATE TOOL IS PREVENTING SLEEP.
+	Timeout will fire in 289 secs Action=TimeoutActionRelease
+   pid 73550(caffeinate): [0x00014c2e00018a37] 00:00:01 PreventUserIdleSystemSleep named: "caffeinate command-line tool"  
+	Details: caffeinate asserting on behalf of 'sleep' (pid 73548)
+	Localized=THE CAFFEINATE TOOL IS PREVENTING SLEEP.
+No kernel assertions.

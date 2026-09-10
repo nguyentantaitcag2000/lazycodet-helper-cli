@@ -24,3 +24,6 @@ jobs:
 
       - name: Test agent.sync
         run: bash tests/agent.sync.test.sh
+
+      - name: Test caffeinate
+        run: bash tests/caffeinate.test.sh
