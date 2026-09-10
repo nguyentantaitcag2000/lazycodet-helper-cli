@@ -14,24 +14,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/platform.sh
 source "${SCRIPT_DIR}/../lib/platform.sh"
 
+CROSS_SCOPE=0
+if is_git_bash || is_wsl; then
+    CROSS_SCOPE=1
+fi
+
 usage() {
     echo "Usage:"
-    echo "  lazy kill <port> [-y] [--list] [--local | --wsl --host | --all]"
+    if [ "$CROSS_SCOPE" -eq 1 ]; then
+        echo "  lazy kill <port> [-y] [--list] [--local | --wsl --host | --all]"
+    else
+        echo "  lazy kill <port> [-y] [--list]"
+    fi
     echo ""
     echo "Lists what is listening on <port> and kills it after confirmation."
-    echo ""
-    echo "Only this machine is searched to begin with. When the port turns out to be"
-    echo "held from outside it - another WSL distro, or the Windows host - the search"
-    echo "widens on its own and asks again before touching anything out there."
+    if [ "$CROSS_SCOPE" -eq 1 ]; then
+        echo ""
+        echo "Only this machine is searched to begin with. When the port turns out to be"
+        echo "held from outside it - another WSL distro, or the Windows host - the search"
+        echo "widens on its own and asks again before touching anything out there."
+    fi
     echo ""
     echo "Options:"
     echo "  -y, --yes    Skip every confirmation prompt"
     echo "      --list   Only report what holds the port, kill nothing"
-    echo "      --local  Never look outside this machine"
-    echo "      --wsl    Always search the other running WSL distros"
-    echo "      --host   Always search the Windows host"
-    echo "  -a, --all    Same as --wsl --host"
+    if [ "$CROSS_SCOPE" -eq 1 ]; then
+        echo "      --local  Never look outside this machine"
+        echo "      --wsl    Always search the other running WSL distros"
+        echo "      --host   Always search the Windows host"
+        echo "  -a, --all    Same as --wsl --host"
+    fi
     echo "  -h, --help   Show this help"
+}
+
+require_cross_scope_option() {
+    if [ "$CROSS_SCOPE" -eq 1 ]; then
+        return 0
+    fi
+
+    echo "Error: Option '$1' is only available on WSL or Git Bash (Windows)."
+    echo ""
+    usage
+    exit 1
 }
 
 PORT=""
@@ -45,10 +69,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -y|--yes) ASSUME_YES=1 ;;
         --list) LIST_ONLY=1 ;;
-        --local) WANT_WSL=0; WANT_HOST=0 ;;
-        --wsl) WANT_WSL=1 ;;
-        --host) WANT_HOST=1 ;;
-        -a|--all) WANT_WSL=1; WANT_HOST=1 ;;
+        --local) require_cross_scope_option "$1"; WANT_WSL=0; WANT_HOST=0 ;;
+        --wsl) require_cross_scope_option "$1"; WANT_WSL=1 ;;
+        --host) require_cross_scope_option "$1"; WANT_HOST=1 ;;
+        -a|--all) require_cross_scope_option "$1"; WANT_WSL=1; WANT_HOST=1 ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "Error: Unknown option -> $1"; echo ""; usage; exit 1 ;;
         *)
@@ -82,7 +106,7 @@ say_warn() { printf '  %s%s%s\n' "$c_warn" "$1" "$c_reset"; }
 say_dim()  { printf '  %s%s%s\n' "$c_dim" "$1" "$c_reset"; }
 say_err()  { printf '%sError: %s%s\n' "$c_err" "$1" "$c_reset" >&2; }
 
-# --------------------------------------------------------------- linux worker
+# ---------------------------------------------------------------- unix worker
 #
 # One script, two modes, run both here and (over wsl.exe) inside other distros,
 # so every distro is inspected and cleaned up by exactly the same code.
@@ -96,7 +120,7 @@ say_err()  { printf '%sError: %s%s\n' "$c_err" "$1" "$c_reset" >&2; }
 #
 # kill mode reads LAZY_PIDS / LAZY_CONTAINERS and prints:
 #   KILLED|<pid>   STOPPED|<container>   FAILED|<what>   FREE=yes|no
-linux_worker() {
+unix_worker() {
     cat <<'LAZY_WORKER'
 set -u
 
@@ -112,13 +136,25 @@ fi
 
 TAB="$(printf '\t')"
 
-# Ground truth for "is this port bound at all", straight from the kernel with
-# no tool to install. State 0A is TCP_LISTEN.
+# Linux reads the kernel socket table directly (state 0A is TCP_LISTEN); macOS
+# verifies through its system lsof because it does not expose /proc/net/tcp.
 socket_exists() {
-    awk -v hp="$(printf '%04X' "$port")" '
-        $4 == "0A" { split($2, a, ":"); if (a[2] == hp) found = 1 }
-        END { exit !found }
-    ' /proc/net/tcp /proc/net/tcp6 2>/dev/null
+    if [ -r /proc/net/tcp ]; then
+        awk -v hp="$(printf '%04X' "$port")" '
+            $4 == "0A" { split($2, a, ":"); if (a[2] == hp) found = 1 }
+            END { exit !found }
+        ' /proc/net/tcp /proc/net/tcp6 2>/dev/null
+        return $?
+    fi
+
+    # macOS has no /proc. lsof ships with the OS and gives us the same final
+    # verification after SIGTERM/SIGKILL instead of assuming the port is free.
+    if command -v lsof >/dev/null 2>&1; then
+        [ -n "$(listeners | head -1)" ]
+        return $?
+    fi
+
+    return 1
 }
 
 # "<pid>\t<addr>\t<name>", pid "-" when the socket has no owner we can see.
@@ -149,7 +185,7 @@ listeners() {
     fi
 
     if command -v lsof >/dev/null 2>&1; then
-        $SUDO lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null |
+        $SUDO lsof +c 0 -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null |
             awk 'NR > 1 && $2 ~ /^[0-9]+$/ { print $2 "\t" $9 "\t" $1 }'
         return 0
     fi
@@ -195,7 +231,7 @@ container_rows() {
 # userland forwarder in front of it, named differently per Docker flavour.
 is_port_forwarder() {
     case "$1" in
-        docker-proxy|docker-pr*|rootlesskit*|slirp4netns*|exe) return 0 ;;
+        docker-proxy|docker-pr*|rootlesskit*|slirp4netns*|com.docker.backend*|vpnkit*|exe) return 0 ;;
     esac
     return 1
 }
@@ -322,7 +358,7 @@ worker_input() {
     printf 'LAZY_MODE=%s\n' "$mode"
     printf 'LAZY_PIDS="%s"\n' "$pids"
     printf 'LAZY_CONTAINERS="%s"\n' "$containers"
-    linux_worker
+    unix_worker
 }
 
 # Keep only the worker's own line prefixes: wsl.exe mixes in notices of its
@@ -550,7 +586,7 @@ HOST_END
 # ---------------------------------------------------------------------- scans
 
 # Two scopes are killed through the Windows tools ("host") and two through the
-# Linux worker ("local", "wsl"). Under Git Bash this machine *is* the host, so
+# Unix worker ("local", "wsl"). Under Git Bash this machine *is* the host, so
 # the local scan files its rows under "host" and the kill path follows.
 if is_git_bash; then
     HERE_SCOPE="host"
@@ -760,7 +796,7 @@ row_label() {
     ' "$ROWS"
 }
 
-kill_linux_targets() {
+kill_unix_targets() {
     local pairs scope target pids containers result line what label
 
     pairs="$(awk -F'|' '$1 != "host" && ($3 == "proc" || $3 == "container") \
@@ -849,9 +885,9 @@ if [ -n "$NEAR_ROWS" ]; then
     fi
 
     if confirm "$NEAR_PROMPT"; then
-        kill_linux_targets
+        kill_unix_targets
     else
-        echo "Left the WSL/Linux targets alone."
+        echo "Left the Unix/WSL targets alone."
     fi
     echo ""
 fi

@@ -131,7 +131,8 @@ Each run overwrites the previous `.lazy.bak`.
 ## Platform
 
 Runs on Git Bash (Windows) only — it drives both sides from there. From inside
-WSL, or on plain Linux, it stops and tells you to run it from Git Bash.
+WSL, Linux, or macOS, the command is omitted from `lazy` usage because those
+platforms cannot drive this Windows-to-WSL workflow.
 
 ## Caveats
 

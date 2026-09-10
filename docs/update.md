@@ -14,6 +14,7 @@ a new `lazy.sh`.
 | Environment | Install dir | Steps |
 |---|---|---|
 | **Linux / WSL** | `/opt/lazy` | `fetch` + `reset --hard` + `clean -fd`, re-`chmod`, re-symlink `/usr/local/bin/lazy` (uses `sudo`) |
+| **macOS** | `/usr/local/lib/lazy` | same sync, then re-symlinks `/usr/local/bin/lazy` (uses `sudo`) |
 | **Git Bash** | `~/.lazy` | same sync, then rewrites the `~/bin/lazy` wrapper |
 
 The install directory is synced to the matching `origin` branch (`origin/main`

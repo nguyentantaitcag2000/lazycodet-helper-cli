@@ -40,8 +40,8 @@ while [ $# -gt 0 ]; do
 done
 
 if ! is_git_bash; then
-    echo "Info: Linux/WSL already uses UTF-8 by default. Nothing to fix."
-    exit 0
+    echo "Error: lazy fix.font is only available on Git Bash (Windows)." >&2
+    exit 1
 fi
 
 BASHRC="${HOME}/.bashrc"

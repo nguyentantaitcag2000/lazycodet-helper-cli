@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-10]
+
+### Added
+
+- Official macOS support with explicit platform detection, installation under
+  `/usr/local/lib/lazy`, the `/usr/local/bin/lazy` entry point, a dedicated
+  update path, Homebrew guidance for `fzf`, and macOS listener verification in
+  `lazy kill` through the system `lsof`.
+- `docs/platform-support.md` and a Platform Parity rule that permits intentional
+  platform exclusions when an operating-system capability has no equivalent.
+
+### Changed
+
+- The command registry now declares supported platforms. `lazy` only lists and
+  dispatches commands available on the current platform; Windows-only
+  `claude.auth` and `fix.font` no longer appear on Linux, WSL, or macOS.
+- `lazy kill` only shows and accepts WSL/Windows cross-scope flags on WSL and Git
+  Bash. Its shared local path now supports macOS and recognizes Docker Desktop's
+  port forwarder so the owning container is stopped safely.
+- The launcher resolves symlinks without relying on GNU-specific `readlink -f`.
+
 ## [2026-09-08]
 
 ### Changed

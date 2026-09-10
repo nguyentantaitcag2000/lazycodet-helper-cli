@@ -19,6 +19,14 @@ is_git_bash() {
     return 1
 }
 
+is_macos() {
+    [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]
+}
+
+is_linux() {
+    [ "$(uname -s 2>/dev/null || true)" = "Linux" ]
+}
+
 git_bash_install_dir() {
     echo "${HOME}/.lazy"
 }
@@ -39,6 +47,33 @@ is_wsl() {
     fi
 
     return 1
+}
+
+# Stable identifiers used by the dispatcher, installer tests, and documentation.
+# Git Bash must be checked before uname because its uname value is MSYS/MINGW;
+# WSL must be checked before plain Linux because both report a Linux kernel.
+platform_id() {
+    if is_git_bash; then
+        echo "git-bash"
+    elif is_macos; then
+        echo "macos"
+    elif is_wsl; then
+        echo "wsl"
+    elif is_linux; then
+        echo "linux"
+    else
+        echo "unsupported"
+    fi
+}
+
+platform_label() {
+    case "${1:-$(platform_id)}" in
+        git-bash) echo "Git Bash (Windows)" ;;
+        macos) echo "macOS" ;;
+        wsl) echo "WSL" ;;
+        linux) echo "Linux" ;;
+        *) echo "this operating system" ;;
+    esac
 }
 
 # Absolute path to a Windows executable as seen from inside WSL. /mnt/c is

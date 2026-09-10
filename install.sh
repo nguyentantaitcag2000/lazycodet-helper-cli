@@ -22,6 +22,14 @@ is_git_bash() {
     return 1
 }
 
+is_macos() {
+    [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]
+}
+
+is_linux() {
+    [ "$(uname -s 2>/dev/null || true)" = "Linux" ]
+}
+
 install_linux() {
     INSTALL_DIR="/opt/lazy"
 
@@ -43,6 +51,40 @@ install_linux() {
     echo "Run:"
     echo "  lazy branch.history"
     echo "  lazy kill <port>"
+}
+
+install_macos() {
+    local install_dir="/usr/local/lib/lazy"
+    local command_path="/usr/local/bin/lazy"
+
+    echo "Detected macOS."
+
+    # Keep the managed checkout outside Homebrew so Intel and Apple Silicon use
+    # the same location. The public command remains on the standard PATH.
+    sudo mkdir -p /usr/local/lib /usr/local/bin
+    sudo rm -rf "$install_dir"
+    sudo git clone "$REPO_URL" "$install_dir"
+
+    sudo chmod +x "$install_dir/lazy.sh"
+    sudo chmod +x "$install_dir/commands/"*.sh
+    sudo ln -sf "$install_dir/lazy.sh" "$command_path"
+
+    if ! command -v fzf >/dev/null 2>&1; then
+        echo ""
+        echo "Warning: fzf is not installed (required for: lazy branch.history)"
+        echo "  Homebrew: brew install fzf"
+        echo "  Manual:   https://github.com/junegunn/fzf/releases"
+    fi
+
+    echo "------------------------------------------"
+    echo "Installation successful!"
+    echo "Install dir: ${install_dir}"
+    echo "Command:     ${command_path}"
+    echo ""
+    echo "Run:"
+    echo "  lazy branch.history"
+    echo "  lazy kill <port>"
+    echo "  lazy update"
 }
 
 ensure_git_bash_path() {
@@ -121,6 +163,11 @@ EOF
 
 if is_git_bash; then
     install_git_bash
-else
+elif is_macos; then
+    install_macos
+elif is_linux; then
     install_linux
+else
+    echo "Error: Unsupported operating system -> $(uname -s 2>/dev/null || echo unknown)" >&2
+    exit 1
 fi

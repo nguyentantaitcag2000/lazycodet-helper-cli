@@ -72,8 +72,8 @@ treated as an ordinary process and killed.
 
 ## Two confirmations
 
-Linux targets and Windows targets are asked about separately, because killing a
-Windows service is a much bigger hammer than killing a dev server. `-y` skips
+Unix/WSL targets and Windows targets are asked about separately, because killing
+a Windows service is a much bigger hammer than killing a dev server. `-y` skips
 both.
 
 ## What is never killed
@@ -94,10 +94,13 @@ all. They are listed with a `[skipped]` note and left alone:
 |---|---|
 | `-y`, `--yes` | Skip every confirmation prompt |
 | `--list` | Only report what holds the port, kill nothing |
-| `--local` | Never look outside this machine |
-| `--wsl` | Always search the other running WSL distros |
-| `--host` | Always search the Windows host |
-| `-a`, `--all` | Same as `--wsl --host` |
+| `--local` | On WSL/Git Bash, never look outside this machine |
+| `--wsl` | On WSL/Git Bash, always search the other running WSL distros |
+| `--host` | On WSL/Git Bash, always search the Windows host |
+| `-a`, `--all` | On WSL/Git Bash, same as `--wsl --host` |
+
+Linux and macOS help omits the four cross-machine flags because only the local
+machine is meaningful there. Passing one explicitly is rejected.
 
 ## Platform differences
 
@@ -105,6 +108,7 @@ all. They are listed with a `[skipped]` note and left alone:
 |---|---|
 | **Linux** | `ss`, falling back to `lsof`, `netstat`, then `fuser`; `/proc/net/tcp` is the ground truth for whether the port is bound at all. Sends `SIGTERM` to the process group before escalating to `SIGKILL` |
 | **WSL** | The same, plus other running distros over `wsl.exe -d <distro> -u root`, plus the Windows host over `netstat.exe` / `taskkill.exe` |
+| **macOS** | Uses the system `lsof` to find and verify listeners, then sends `SIGTERM` before escalating to `SIGKILL`. Published Docker Desktop ports are stopped through their container rather than by killing the Docker backend |
 | **Git Bash** | `netstat` / `tasklist` / `taskkill /T` on the Windows host, and it drills into running WSL distros when the owner turns out to be in one |
 
 On Windows only `LISTENING` sockets are targeted, and IPv6 addresses such as

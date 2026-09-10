@@ -1,7 +1,7 @@
 # lazycodet-helper-cli
 
-Small Bash CLI helpers for everyday Git and terminal chores. Works on Linux, WSL
-and Git Bash (Windows).
+Small Bash CLI helpers for everyday Git and terminal chores. Works on Linux, WSL,
+macOS, and Git Bash (Windows).
 
 ## Commands
 
@@ -15,11 +15,12 @@ and Git Bash (Windows).
 | [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port, in this machine or in another WSL distro |
 | [`lazy update`](docs/update.md) | Update the installed CLI |
 
-Run `lazy` to list them, or `lazy <command> --help` for the options.
+Run `lazy` to list the commands available on your current platform, or
+`lazy <command> --help` for their options.
 
 ## Install
 
-Copy and paste into the terminal (Linux, WSL, or Git Bash):
+Copy and paste into the terminal (Linux, WSL, macOS, or Git Bash):
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/nguyentantaitcag2000/lazycodet-helper-cli/main/install.sh)
@@ -36,6 +37,7 @@ The installer detects the environment automatically:
 | Environment | Where it installs |
 |---|---|
 | **Linux / WSL** | `/opt/lazy`, symlinked to `/usr/local/bin/lazy` (uses `sudo`) |
+| **macOS** | `/usr/local/lib/lazy`, symlinked to `/usr/local/bin/lazy` (uses `sudo`) |
 | **Git Bash** | `~/.lazy`, wrapper at `~/bin/lazy`, adds `~/bin` to `PATH` (no `sudo`) |
 
 On Git Bash, reload the shell once after installing:
@@ -45,4 +47,4 @@ source ~/.bashrc
 ```
 
 `lazy branch.history` also needs [fzf](https://github.com/junegunn/fzf)
-(`sudo apt install fzf`, or `scoop install fzf` on Windows).
+(`sudo apt install fzf`, `brew install fzf` on macOS, or `scoop install fzf` on Windows).

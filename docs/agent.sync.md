@@ -54,7 +54,7 @@ is created successfully.
 ## Requirements and platforms
 
 - Git and Node.js must be available.
-- Linux and WSL can normally create symlinks without extra setup.
+- Linux, WSL, and macOS can normally create symlinks without extra setup.
 - Git Bash uses native Windows symlinks. Enable Windows Developer Mode, or grant
   the account the **Create symbolic links** privilege, before running the command.
 

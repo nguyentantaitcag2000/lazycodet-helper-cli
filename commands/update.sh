@@ -75,6 +75,27 @@ update_linux() {
     echo "Successfully updated!"
 }
 
+update_macos() {
+    local install_dir="/usr/local/lib/lazy"
+
+    echo "Checking for updates (macOS)..."
+
+    if [ ! -d "${install_dir}/.git" ]; then
+        echo "Error: Install not found at ${install_dir}"
+        echo "Re-run install.sh first."
+        exit 1
+    fi
+
+    sync_install_repo "$install_dir" 1
+
+    sudo chmod +x "$install_dir/lazy.sh"
+    sudo chmod +x "$install_dir/commands/"*.sh
+    sudo mkdir -p /usr/local/bin
+    sudo ln -sf "$install_dir/lazy.sh" /usr/local/bin/lazy
+
+    echo "Successfully updated!"
+}
+
 refresh_git_bash_wrapper() {
     local install_dir="$1"
     local bin_dir
@@ -112,6 +133,11 @@ update_git_bash() {
 
 if is_git_bash; then
     update_git_bash
-else
+elif is_macos; then
+    update_macos
+elif is_linux; then
     update_linux
+else
+    echo "Error: Unsupported operating system -> $(uname -s 2>/dev/null || echo unknown)" >&2
+    exit 1
 fi

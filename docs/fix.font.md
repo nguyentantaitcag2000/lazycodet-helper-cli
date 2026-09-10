@@ -73,8 +73,9 @@ git config --global --unset core.quotepath
 
 ## Platforms
 
-Git Bash / MSYS only. On Linux and WSL the command reports that UTF-8 is already
-the default and exits without touching anything.
+Git Bash / MSYS only. On Linux, WSL, and macOS the command is omitted from
+`lazy` usage because its Windows registry, console, and mintty settings do not
+exist there.
 
 Windows Terminal ignores `~/.minttyrc`. If text is still wrong there, set the
 profile font under Settings → Profiles → Appearance.

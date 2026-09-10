@@ -35,5 +35,6 @@ Must be run inside a Git repository, and needs
 [fzf](https://github.com/junegunn/fzf):
 
 - Linux / WSL: `sudo apt install fzf`
+- macOS: `brew install fzf`
 - Git Bash (Windows): `scoop install fzf` or
   [download a release](https://github.com/junegunn/fzf/releases)
