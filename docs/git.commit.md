@@ -12,13 +12,15 @@ row, `Enter` to continue, and `Esc` to cancel. After the picker closes, enter a
 single-line commit message.
 
 ```text
- M  apps/admin-portal/composables/useAdminPersonalPost.ts
-??  apps/admin-portal/tests/personal-post.test.ts
- M  apps/main-web/assets/js/api.ts
+M   unstaged            apps/admin-portal/composables/useAdminPersonalPost.ts
+?   untracked           apps/admin-portal/tests/personal-post.test.ts
+M   staged              apps/main-web/README.md
+M   staged + unstaged   apps/main-web/assets/js/api.ts
 ```
 
-The two status columns have the same meaning as `git status --short`: the first
-is the staging-area status and the second is the working-tree status.
+The first column is the Git change type (`M`, `A`, `D`, `R`, or `?`). The second
+column says whether that change is staged, unstaged, both, or untracked. The
+columns have fixed widths so every file path starts at the same position.
 
 ## Staging behavior
 

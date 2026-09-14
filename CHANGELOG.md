@@ -14,7 +14,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   the commit with a temporary Git index so unselected staged and unstaged
   changes remain exactly as they were; cancellation and failed hooks leave the
   real staging area untouched. In-progress merge, rebase, cherry-pick, revert,
-  and unresolved-conflict states are rejected.
+  and unresolved-conflict states are rejected. The picker presents change type,
+  staging state, and path in fixed-width columns for quick scanning.
 
 ## [2026-09-10]
 

@@ -83,6 +83,30 @@ sanitize_display_path() {
     printf '%s' "$value"
 }
 
+format_status() {
+    local status="$1"
+    local index_status=${status:0:1}
+    local worktree_status=${status:1:1}
+
+    if [ "$status" = "??" ]; then
+        display_change="?"
+        display_state="untracked"
+    elif [ "$index_status" != " " ] && [ "$worktree_status" != " " ]; then
+        if [ "$index_status" = "$worktree_status" ]; then
+            display_change="$index_status"
+        else
+            display_change="${index_status}/${worktree_status}"
+        fi
+        display_state="staged + unstaged"
+    elif [ "$index_status" != " " ]; then
+        display_change="$index_status"
+        display_state="staged"
+    else
+        display_change="$worktree_status"
+        display_state="unstaged"
+    fi
+}
+
 while IFS= read -r -d '' record; do
     status=${record:0:2}
     path=${record:3}
@@ -96,9 +120,11 @@ while IFS= read -r -d '' record; do
         *) display_path=$(sanitize_display_path "$path") ;;
     esac
 
+    format_status "$status"
     PATHS+=("$path")
     SOURCE_PATHS+=("$source_path")
-    printf '%s\t%s  %s\n' "${#PATHS[@]}" "$status" "$display_path" >> "$CHOICES_FILE"
+    printf '%s\t%-3s %-19s %s\n' \
+        "${#PATHS[@]}" "$display_change" "$display_state" "$display_path" >> "$CHOICES_FILE"
 done < <(git -c core.quotePath=false status --porcelain=v1 -z --untracked-files=all)
 
 if [ "${#PATHS[@]}" -eq 0 ]; then
@@ -116,7 +142,7 @@ SELECTED_OUTPUT=$(fzf \
     --bind='space:toggle+down' \
     --marker='*' \
     --prompt='Commit files > ' \
-    --header='SPACE = select/unselect | ENTER = continue | ESC = cancel' \
+    --header=$'CHG STATE               FILE\nSPACE = select/unselect | ENTER = continue | ESC = cancel' \
     < "$CHOICES_FILE")
 FZF_STATUS=$?
 
