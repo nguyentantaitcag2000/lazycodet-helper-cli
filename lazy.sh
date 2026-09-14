@@ -36,6 +36,7 @@ COMMANDS=(
     "caffeinate|macos|lazy caffeinate [--list] [--kill-all]|List and stop the caffeinate processes keeping this Mac awake"
     "claude.auth|git-bash|lazy claude.auth [distro]|Sync the Claude Code login between Windows and a WSL distro"
     "fix.font|git-bash|lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
+    "git.commit|linux,wsl,git-bash,macos|lazy git.commit|Pick changed files and commit only those files (requires fzf)"
     "git.remember|linux,wsl,git-bash,macos|lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "kill|linux,wsl,git-bash,macos|lazy kill <port> [-y]|Kill what holds <port> on the scopes available here"
     "update|linux,wsl,git-bash,macos|lazy update|Update lazy to the latest version from origin"

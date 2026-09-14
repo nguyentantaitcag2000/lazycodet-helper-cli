@@ -18,6 +18,7 @@ Status meanings:
 | `caffeinate` | Excluded² | Excluded² | Supported | Excluded² |
 | `claude.auth` | Excluded³ | Excluded³ | Excluded³ | Supported |
 | `fix.font` | Excluded⁴ | Excluded⁴ | Excluded⁴ | Supported |
+| `git.commit` | Supported | Supported | Supported | Supported |
 | `git.remember` | Supported | Supported | Supported | Supported |
 | `kill` | Supported (local) | Supported (local, WSL distros, Windows host) | Supported (local) | Supported (Windows host and WSL distros) |
 | `update` | Supported | Supported | Supported | Supported |

@@ -71,7 +71,7 @@ install_macos() {
 
     if ! command -v fzf >/dev/null 2>&1; then
         echo ""
-        echo "Warning: fzf is not installed (required for: lazy branch.history)"
+        echo "Warning: fzf is not installed (required for: lazy branch.history, lazy git.commit)"
         echo "  Homebrew: brew install fzf"
         echo "  Manual:   https://github.com/junegunn/fzf/releases"
     fi
@@ -120,7 +120,7 @@ check_fzf() {
     fi
 
     echo ""
-    echo "Warning: fzf is not installed (required for: lazy branch.history)"
+    echo "Warning: fzf is not installed (required for: lazy branch.history, lazy git.commit)"
     echo "  Scoop:  scoop install fzf"
     echo "  Manual: https://github.com/junegunn/fzf/releases"
 }

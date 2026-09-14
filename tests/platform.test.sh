@@ -55,6 +55,7 @@ simulated_usage() {
 CURRENT_PLATFORM="$(bash -c 'source "$1"; platform_id' _ "${SCRIPT_DIR}/../lib/platform.sh")"
 CURRENT_USAGE="$(usage_output)"
 assert_has "$CURRENT_USAGE" "lazy agent.sync"
+assert_has "$CURRENT_USAGE" "lazy git.commit"
 assert_has "$CURRENT_USAGE" "lazy kill <port>"
 
 case "$CURRENT_PLATFORM" in
@@ -74,6 +75,7 @@ esac
 GIT_BASH_USAGE="$(MSYSTEM=MINGW64 bash "$CLI" 2>&1 || true)"
 assert_has "$GIT_BASH_USAGE" "lazy claude.auth"
 assert_has "$GIT_BASH_USAGE" "lazy fix.font"
+assert_has "$GIT_BASH_USAGE" "lazy git.commit"
 
 # Exercise both Unix registry views even when this test itself runs on only one
 # of them. Git Bash has a readonly msys OSTYPE, so it validates its real branch
@@ -82,6 +84,7 @@ if [ "$CURRENT_PLATFORM" != "git-bash" ]; then
     for simulated_platform in Darwin Linux; do
         SIMULATED_USAGE="$(simulated_usage "$simulated_platform")"
         assert_has "$SIMULATED_USAGE" "lazy agent.sync"
+        assert_has "$SIMULATED_USAGE" "lazy git.commit"
         assert_lacks "$SIMULATED_USAGE" "lazy claude.auth"
         assert_lacks "$SIMULATED_USAGE" "lazy fix.font"
     done

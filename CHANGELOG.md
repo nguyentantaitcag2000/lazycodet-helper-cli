@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-14]
+
+### Added
+
+- `lazy git.commit`: opens an `fzf` multi-select picker for tracked, staged,
+  deleted, renamed, and untracked files, prompts for a commit message, and
+  commits the complete current content of only the selected files. It builds
+  the commit with a temporary Git index so unselected staged and unstaged
+  changes remain exactly as they were; cancellation and failed hooks leave the
+  real staging area untouched. In-progress merge, rebase, cherry-pick, revert,
+  and unresolved-conflict states are rejected.
+
 ## [2026-09-10]
 
 ### Added

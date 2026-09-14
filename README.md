@@ -12,6 +12,7 @@ macOS, and Git Bash (Windows).
 | [`lazy caffeinate`](docs/caffeinate.md) | List and stop the `caffeinate` processes keeping a Mac awake |
 | [`lazy claude.auth`](docs/claude.auth.md) | Sync the Claude Code login between Windows and a WSL distro, in whichever direction is still valid |
 | [`lazy fix.font`](docs/fix.font.md) | Fix garbled Vietnamese / accented text on Windows |
+| [`lazy git.commit`](docs/git.commit.md) | Pick changed files and commit only those files without disturbing other staged changes |
 | [`lazy git.remember`](docs/git.remember.md) | Store this repo's Git login so it stops asking |
 | [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port, in this machine or in another WSL distro |
 | [`lazy update`](docs/update.md) | Update the installed CLI |
@@ -47,5 +48,5 @@ On Git Bash, reload the shell once after installing:
 source ~/.bashrc
 ```
 
-`lazy branch.history` also needs [fzf](https://github.com/junegunn/fzf)
+`lazy branch.history` and `lazy git.commit` also need [fzf](https://github.com/junegunn/fzf)
 (`sudo apt install fzf`, `brew install fzf` on macOS, or `scoop install fzf` on Windows).
