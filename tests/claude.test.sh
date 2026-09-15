@@ -317,6 +317,13 @@ pick() {
     LAZY_CLAUDE_TTY_IN="$KEYS" LAZY_CLAUDE_TTY_OUT="$SCREEN" run -y
 }
 
+pick_packet() {
+    printf '%b' "$1" > "$KEYS"
+    : > "$SCREEN"
+    LAZY_CLAUDE_PACKET_INPUT=1 LAZY_CLAUDE_TTY_IN="$KEYS" \
+        LAZY_CLAUDE_TTY_OUT="$SCREEN" run -y
+}
+
 # alpha, beta, gamma, then the add row - gamma is in use, so that is where the
 # cursor starts. One step up lands on beta.
 OUT="$(pick '\033[A\n')"
@@ -342,6 +349,18 @@ assert_has "$OUT" "Cancelled."
 # So does ESC on its own.
 OUT="$(pick '\033')"
 assert_has "$OUT" "Cancelled."
+
+# Git Bash's Windows PTY can discard the tail of an input record when an arrow
+# is split across two Bash `read` calls. Its packet reader must decode standard
+# CSI, application-cursor (SS3), and modified CSI arrows without cancelling.
+OUT="$(pick_packet '\033[A\n')"
+assert_has "$OUT" "now signed in as 'alpha'"
+OUT="$(pick_packet '\033OB\n')"
+assert_has "$OUT" "now signed in as 'beta'"
+OUT="$(pick_packet '\033OA\n')"
+assert_has "$OUT" "now signed in as 'alpha'"
+OUT="$(pick_packet '\033[1;5B\n')"
+assert_has "$OUT" "now signed in as 'beta'"
 
 # The last row signs in to another account.
 OUT="$(STUB_TOKEN=delta-1 STUB_UUID=uuid-delta STUB_EMAIL=delta@example.com \

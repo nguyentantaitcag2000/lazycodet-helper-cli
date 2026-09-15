@@ -870,6 +870,11 @@ EOF
 MENU_KEYS=""
 MENU_COUNT=0
 MENU_CURSOR=0
+MENU_KEY=""
+MENU_ANSWER=""
+MENU_PACKET_INPUT=0
+MENU_INPUT_BUFFER=""
+MENU_STTY_STATE=""
 
 menu_key_at() {
     printf '%s\n' "$MENU_KEYS" | sed -n "$(( $1 + 1 ))p"
@@ -912,10 +917,17 @@ EOF
 # read the chosen action, and a prompt written there would be captured with it.
 menu_ask() {
     local answer=""
+    local restore_packet="$MENU_PACKET_INPUT"
+
+    menu_restore_input
     printf '\033[?25h  %s ' "$1" >> "$TTY_OUT"
     IFS= read -r answer <&3 || answer=""
     printf '\033[?25l' >> "$TTY_OUT"
-    printf '%s' "$answer"
+    MENU_ANSWER="$answer"
+
+    if [ "$restore_packet" -eq 1 ]; then
+        menu_prepare_input || return 1
+    fi
 }
 
 have_terminal() {
@@ -928,7 +940,110 @@ have_terminal() {
 }
 
 leave_screen() {
+    menu_restore_input
     printf '\033[?25h\033[?1049l' >> "$TTY_OUT" 2>/dev/null || true
+}
+
+menu_restore_input() {
+    if [ -n "$MENU_STTY_STATE" ]; then
+        stty "$MENU_STTY_STATE" <&3 2>/dev/null || true
+        MENU_STTY_STATE=""
+    fi
+}
+
+menu_prepare_input() {
+    MENU_PACKET_INPUT=0
+
+    # Bash `read -n1` on a Windows PTY can consume the whole console input
+    # record while returning only its first byte. Splitting ESC and "[A" across
+    # two `read` calls therefore turns an arrow key into a bare ESC. Read the
+    # PTY record once on Git Bash and decode the buffered bytes ourselves.
+    if is_git_bash || [ "${LAZY_CLAUDE_PACKET_INPUT:-0}" = "1" ]; then
+        MENU_PACKET_INPUT=1
+
+        # File-backed input is the test harness and needs no terminal mode.
+        if [ -z "${LAZY_CLAUDE_TTY_IN:-}" ]; then
+            MENU_STTY_STATE="$(stty -g <&3 2>/dev/null)" || return 1
+            stty -echo -icanon min 1 time 0 <&3 2>/dev/null || {
+                MENU_STTY_STATE=""
+                return 1
+            }
+        fi
+    fi
+}
+
+menu_read_packet_key() {
+    local packet
+    local sentinel=$'\001'
+    local sequence
+    local csi_arrow_regex=$'^\033\\[[0-9;]*([AB])'
+
+    if [ -z "$MENU_INPUT_BUFFER" ]; then
+        # The sentinel prevents command substitution from stripping an ENTER
+        # byte at the end of the packet. It is removed before decoding.
+        packet="$(dd bs=32 count=1 <&3 2>/dev/null; printf '%s' "$sentinel")"
+        packet="${packet%"$sentinel"}"
+        [ -n "$packet" ] || return 1
+        MENU_INPUT_BUFFER="$packet"
+    fi
+
+    case "$MENU_INPUT_BUFFER" in
+        $'\n'*) MENU_KEY=""; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"; return 0 ;;
+        $'\r'*) MENU_KEY=""; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"; return 0 ;;
+        $'\033OA'*) MENU_KEY="up"; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:3}"; return 0 ;;
+        $'\033OB'*) MENU_KEY="down"; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:3}"; return 0 ;;
+    esac
+
+    if [[ "$MENU_INPUT_BUFFER" =~ $csi_arrow_regex ]]; then
+        sequence="${BASH_REMATCH[0]}"
+        case "${BASH_REMATCH[1]}" in
+            A) MENU_KEY="up" ;;
+            B) MENU_KEY="down" ;;
+        esac
+        MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:${#sequence}}"
+        return 0
+    fi
+
+    if [ "${MENU_INPUT_BUFFER:0:1}" = $'\033' ]; then
+        if [ "${#MENU_INPUT_BUFFER}" -eq 1 ]; then
+            MENU_KEY="escape"
+        else
+            # Home/End/function keys are not actions here. Ignore their packet
+            # instead of treating an unfamiliar escape sequence as a request
+            # to quit the picker.
+            MENU_KEY="ignore"
+        fi
+        MENU_INPUT_BUFFER=""
+        return 0
+    fi
+
+    MENU_KEY="${MENU_INPUT_BUFFER:0:1}"
+    MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"
+}
+
+menu_read_key() {
+    local key
+    local rest
+
+    MENU_KEY=""
+    if [ "$MENU_PACKET_INPUT" -eq 1 ]; then
+        menu_read_packet_key
+        return $?
+    fi
+
+    IFS= read -rsn1 key <&3 || return 1
+    if [ "$key" = $'\033' ]; then
+        # A bare ESC quits; an arrow key sends "[A"/"[B" right behind it.
+        # The timeout is whole seconds because bash 3.2 rejects fractions.
+        rest=""
+        IFS= read -rsn2 -t 1 rest <&3 || rest=""
+        case "$rest" in
+            "[A") key="up" ;;
+            "[B") key="down" ;;
+            *) key="escape" ;;
+        esac
+    fi
+    MENU_KEY="$key"
 }
 
 # Draws on the alternate screen the way nano does, so the picker never scrolls
@@ -936,7 +1051,6 @@ leave_screen() {
 menu_select() {
     local active="$1"
     local key
-    local rest
     local chosen
 
     trap 'leave_screen' EXIT
@@ -946,24 +1060,13 @@ menu_select() {
     # One long-lived descriptor rather than reopening per key: an arrow sends
     # three bytes and the tail has to come off the same stream as the escape.
     exec 3< "$TTY_IN"
+    menu_prepare_input || { leave_screen; return 1; }
 
     while :; do
         menu_draw "$active"
 
-        IFS= read -rsn1 key <&3 || { leave_screen; return 1; }
-
-        if [ "$key" = $'\033' ]; then
-            # A bare ESC quits; an arrow key sends "[A"/"[B" right behind it.
-            # The timeout is whole seconds because bash 3.2, which macOS still
-            # ships, rejects a fractional one.
-            rest=""
-            IFS= read -rsn2 -t 1 rest <&3 || rest=""
-            case "$rest" in
-                "[A") key="up" ;;
-                "[B") key="down" ;;
-                *) leave_screen; return 1 ;;
-            esac
-        fi
+        menu_read_key || { leave_screen; return 1; }
+        key="$MENU_KEY"
 
         case "$key" in
             up|k)
@@ -980,12 +1083,14 @@ menu_select() {
                     MENU_CURSOR=0
                 fi
                 ;;
-            q|Q) leave_screen; return 1 ;;
+            escape|q|Q) leave_screen; return 1 ;;
+            ignore) ;;
             a|A) leave_screen; printf 'add'; return 0 ;;
             d|D)
                 chosen="$(menu_key_at "$MENU_CURSOR")"
                 if [ "$chosen" != "__add__" ]; then
-                    case "$(menu_ask "Forget '${chosen}'? [y/N]")" in
+                    menu_ask "Forget '${chosen}'? [y/N]" || { leave_screen; return 1; }
+                    case "$MENU_ANSWER" in
                         y|Y|yes|YES) leave_screen; printf 'remove %s' "$chosen"; return 0 ;;
                     esac
                 fi

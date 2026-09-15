@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-16]
+
+### Fixed
+
+- `lazy claude`: arrow keys no longer close the account picker as `Cancelled.`
+  on Git Bash terminals whose Windows PTY delivers an escape sequence as one
+  input record. The picker reads that record once and decodes standard CSI,
+  application-cursor and modified up/down sequences; unfamiliar escape
+  sequences are ignored instead of being mistaken for a bare ESC.
+
 ## [2026-09-15]
 
 ### Added
