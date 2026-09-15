@@ -12,7 +12,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   on Git Bash terminals whose Windows PTY delivers an escape sequence as one
   input record. The picker reads that record once and decodes standard CSI,
   application-cursor and modified up/down sequences; unfamiliar escape
-  sequences are ignored instead of being mistaken for a bare ESC.
+  sequences are ignored instead of being mistaken for a bare ESC. Moving the
+  cursor also redraws in place instead of clearing the alternate screen between
+  frames, removing the visible flash that made the list look as if it reloaded.
 
 ## [2026-09-15]
 

@@ -875,6 +875,7 @@ MENU_ANSWER=""
 MENU_PACKET_INPUT=0
 MENU_INPUT_BUFFER=""
 MENU_STTY_STATE=""
+MENU_DRAWN=0
 
 menu_key_at() {
     printf '%s\n' "$MENU_KEYS" | sed -n "$(( $1 + 1 ))p"
@@ -887,7 +888,16 @@ menu_draw() {
     local marker
     local line
 
-    printf '\033[H\033[2J' >> "$TTY_OUT"
+    # Clear only the first frame. Clearing before every redraw briefly exposes
+    # a blank alternate screen, which looks like the list is reloading. Later
+    # frames overwrite in place; synchronized output makes the update atomic on
+    # terminals that support it and is harmless on terminals that do not.
+    if [ "$MENU_DRAWN" -eq 0 ]; then
+        printf '\033[?2026h\033[H\033[2J' >> "$TTY_OUT"
+        MENU_DRAWN=1
+    else
+        printf '\033[?2026h\033[H' >> "$TTY_OUT"
+    fi
     printf '\n  %sClaude accounts%s\n\n' "$c_bold" "$c_reset" >> "$TTY_OUT"
 
     while IFS= read -r slug; do
@@ -911,6 +921,7 @@ EOF
 
     printf '\n  %s%s%s\n' "$c_dim" \
         "up/down move   ENTER switch   [a] add   [d] forget   [q] quit" "$c_reset" >> "$TTY_OUT"
+    printf '\033[J\033[?2026l' >> "$TTY_OUT"
 }
 
 # The prompt goes to the terminal, not to stdout: the caller captures stdout to
@@ -941,7 +952,7 @@ have_terminal() {
 
 leave_screen() {
     menu_restore_input
-    printf '\033[?25h\033[?1049l' >> "$TTY_OUT" 2>/dev/null || true
+    printf '\033[?2026l\033[?25h\033[?1049l' >> "$TTY_OUT" 2>/dev/null || true
 }
 
 menu_restore_input() {

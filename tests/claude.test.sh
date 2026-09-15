@@ -317,6 +317,20 @@ pick() {
     LAZY_CLAUDE_TTY_IN="$KEYS" LAZY_CLAUDE_TTY_OUT="$SCREEN" run -y
 }
 
+assert_file_count() {
+    local file="$1"
+    local needle="$2"
+    local expected="$3"
+    local actual
+
+    actual="$(grep -oF -- "$needle" "$file" | wc -l | tr -d '[:space:]')"
+    [ "$actual" = "$expected" ] || {
+        echo "--- $file ---" >&2
+        cat "$file" >&2
+        fail "expected ${expected} occurrence(s) of ${needle}, found ${actual}"
+    }
+}
+
 pick_packet() {
     printf '%b' "$1" > "$KEYS"
     : > "$SCREEN"
@@ -331,6 +345,7 @@ assert_has "$OUT" "now signed in as 'beta'"
 assert_file_has "$SCREEN" "up/down move   ENTER switch"
 assert_file_has "$SCREEN" "add another account"
 assert_file_has "$SCREEN" "> * gamma"
+assert_file_count "$SCREEN" $'\033[2J' 1
 [ "$(run --current)" = "beta" ] || fail "the picker did not switch to beta"
 
 # Wrapping: beta is in use now, one step up from it is alpha.
