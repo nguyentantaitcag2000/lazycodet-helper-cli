@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-15]
+
+### Fixed
+
+- `lazy branch.history`: the picker listed stale branch names and hid current
+  ones. A branch renamed with `git branch -m` stayed in the list under its old
+  name - checking it out failed with `pathspec ... did not match` - while the
+  new name was missing entirely, because the reflog records the name a branch
+  had at checkout time. `Branch: renamed` reflog entries are now replayed to
+  carry each checkout forward to the name the branch has today, branches that
+  no longer exist locally (and detached-HEAD entries) are dropped, and branches
+  that were never checked out under their current name are listed with their
+  last commit date. The date column also showed a fragment of the reflog
+  selector (`a1b2c3d HEAD@{2026-09-15`) instead of the checkout date, and
+  branch names are now padded into a fixed-width column.
+
 ## [2026-09-14]
 
 ### Added
