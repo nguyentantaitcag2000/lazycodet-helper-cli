@@ -6,6 +6,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [2026-09-15]
 
+### Added
+
+- `lazy claude`: keeps several Claude Code logins on one machine and switches
+  which of them `claude` is signed in as. With no arguments it opens a picker
+  drawn on the alternate screen - up/down move, ENTER switches, `[a]` signs in
+  to another account, `[d]` forgets one, `[q]` or ESC quits - and each row shows
+  the account name, email, plan and token state. `--add` runs `claude auth
+  login` against a throwaway `CLAUDE_CONFIG_DIR`, so the browser flow cannot
+  disturb the login in use, not even when it is abandoned half way. `--list`,
+  `--current`, `--remove` and a bare account name cover scripted use.
+
+  The point of the command is not copying tokens but not breaking the account
+  switched away from: Claude Code rotates the refresh token on every renewal, so
+  a copy archived at switch time is stale the moment that account is used again,
+  and restoring it later is what logs an account out for good. Every run
+  therefore starts by writing the live tokens back into the account that owns
+  them, identified by `oauthAccount.accountUuid`, and a saved account is only
+  ever overwritten by tokens whose identity matches it - so a login made outside
+  `lazy`, or a logout that leaves an empty token behind, cannot wipe one. The
+  new tokens are read back through the same store before `~/.claude.json` is
+  touched, leaving a failed switch signed in as it was. Project history, MCP
+  servers and settings in `~/.claude.json` survive a switch; the account-scoped
+  caches in it, and `policy-limits.json`, are dropped so the new account's plan
+  and limits are fetched rather than inherited. macOS builds that keep the
+  tokens in the login keychain are detected and driven through `security`
+  instead of the file.
+
 ### Fixed
 
 - `lazy branch.history`: the picker listed stale branch names and hid current

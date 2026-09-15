@@ -27,3 +27,6 @@ jobs:
 
       - name: Test caffeinate
         run: bash tests/caffeinate.test.sh
+
+      - name: Test claude
+        run: bash tests/claude.test.sh

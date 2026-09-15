@@ -16,6 +16,7 @@ Status meanings:
 | `agent.sync` | Supported | Supported | Supported | Supported¹ |
 | `branch.history` | Supported | Supported | Supported | Supported |
 | `caffeinate` | Excluded² | Excluded² | Supported | Excluded² |
+| `claude` | Supported | Supported | Supported⁵ | Supported |
 | `claude.auth` | Excluded³ | Excluded³ | Excluded³ | Supported |
 | `fix.font` | Excluded⁴ | Excluded⁴ | Excluded⁴ | Supported |
 | `git.commit` | Supported | Supported | Supported | Supported |
@@ -34,6 +35,11 @@ Status meanings:
    provide that workflow; from inside WSL it must still be launched on the host.
 4. `fix.font` changes Windows registry, console, PowerShell, and mintty settings.
    Those settings do not exist on Linux, WSL, or macOS.
+5. `claude` reads and writes whichever credential store Claude Code actually
+   uses on the machine: the `.credentials.json` file everywhere, and the login
+   keychain entry `Claude Code-credentials` on the macOS builds that keep the
+   tokens there. Every write is verified by reading it back through the same
+   store.
 
 The source of truth for runtime availability is the command registry in
 `lazy.sh`. When this matrix and the registry disagree, update both in the same
