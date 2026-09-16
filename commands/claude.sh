@@ -867,25 +867,24 @@ EOF
 
 # ------------------------------------------------------------------ the picker
 
-MENU_KEYS=""
+MENU_KEYS=()
+MENU_ROWS=()
 MENU_COUNT=0
 MENU_CURSOR=0
 MENU_KEY=""
 MENU_ANSWER=""
 MENU_PACKET_INPUT=0
-MENU_INPUT_BUFFER=""
+MENU_INPUT_FD=3
+MENU_READER_PID=""
 MENU_STTY_STATE=""
 MENU_DRAWN=0
 
 menu_key_at() {
-    printf '%s\n' "$MENU_KEYS" | sed -n "$(( $1 + 1 ))p"
+    printf '%s' "${MENU_KEYS[$1]:-}"
 }
 
 menu_draw() {
-    local active="$1"
     local i=0
-    local slug
-    local marker
     local line
 
     # Clear only the first frame. Clearing before every redraw briefly exposes
@@ -900,24 +899,15 @@ menu_draw() {
     fi
     printf '\n  %sClaude accounts%s\n\n' "$c_bold" "$c_reset" >> "$TTY_OUT"
 
-    while IFS= read -r slug; do
-        [ -n "$slug" ] || continue
-        if [ "$slug" = "__add__" ]; then
-            line="+ add another account (browser sign-in)"
-        else
-            if [ "$slug" = "$active" ]; then marker="*"; else marker=" "; fi
-            line="$(render_row "$slug" "$marker")"
-        fi
-
+    while [ "$i" -lt "$MENU_COUNT" ]; do
+        line="${MENU_ROWS[$i]}"
         if [ "$i" -eq "$MENU_CURSOR" ]; then
             printf '  %s> %s%s\n' "$c_sel" "$line" "$c_reset" >> "$TTY_OUT"
         else
             printf '    %s\n' "$line" >> "$TTY_OUT"
         fi
         i=$((i + 1))
-    done <<EOF
-$MENU_KEYS
-EOF
+    done
 
     printf '\n  %s%s%s\n' "$c_dim" \
         "up/down move   ENTER switch   [a] add   [d] forget   [q] quit" "$c_reset" >> "$TTY_OUT"
@@ -956,6 +946,15 @@ leave_screen() {
 }
 
 menu_restore_input() {
+    if [ -n "$MENU_READER_PID" ]; then
+        kill "$MENU_READER_PID" 2>/dev/null || true
+        wait "$MENU_READER_PID" 2>/dev/null || true
+        MENU_READER_PID=""
+    fi
+    if [ "$MENU_INPUT_FD" -eq 4 ]; then
+        exec 4<&-
+        MENU_INPUT_FD=3
+    fi
     if [ -n "$MENU_STTY_STATE" ]; then
         stty "$MENU_STTY_STATE" <&3 2>/dev/null || true
         MENU_STTY_STATE=""
@@ -966,11 +965,13 @@ menu_prepare_input() {
     MENU_PACKET_INPUT=0
 
     # Bash `read -n1` on a Windows PTY can consume the whole console input
-    # record while returning only its first byte. Splitting ESC and "[A" across
-    # two `read` calls therefore turns an arrow key into a bare ESC. Read the
-    # PTY record once on Git Bash and decode the buffered bytes ourselves.
+    # record while returning only its first byte. A single long-lived `cat`
+    # reads each record intact and forwards it to a pipe, where Bash can consume
+    # the bytes without loss. Keeping that proxy alive also avoids spawning a
+    # `dd` process for every key press.
     if is_git_bash || [ "${LAZY_CLAUDE_PACKET_INPUT:-0}" = "1" ]; then
         MENU_PACKET_INPUT=1
+        MENU_INPUT_FD=3
 
         # File-backed input is the test harness and needs no terminal mode.
         if [ -z "${LAZY_CLAUDE_TTY_IN:-}" ]; then
@@ -979,57 +980,57 @@ menu_prepare_input() {
                 MENU_STTY_STATE=""
                 return 1
             }
+            exec 4< <(cat <&3)
+            MENU_READER_PID=$!
+            MENU_INPUT_FD=4
         fi
     fi
 }
 
 menu_read_packet_key() {
-    local packet
-    local sentinel=$'\001'
-    local sequence
-    local csi_arrow_regex=$'^\033\\[[0-9;]*([AB])'
+    local first
+    local next
+    local final
 
-    if [ -z "$MENU_INPUT_BUFFER" ]; then
-        # The sentinel prevents command substitution from stripping an ENTER
-        # byte at the end of the packet. It is removed before decoding.
-        packet="$(dd bs=32 count=1 <&3 2>/dev/null; printf '%s' "$sentinel")"
-        packet="${packet%"$sentinel"}"
-        [ -n "$packet" ] || return 1
-        MENU_INPUT_BUFFER="$packet"
+    IFS= read -rsn1 -u "$MENU_INPUT_FD" first || return 1
+    if [ "$first" != $'\033' ]; then
+        MENU_KEY="$first"
+        return 0
     fi
 
-    case "$MENU_INPUT_BUFFER" in
-        $'\n'*) MENU_KEY=""; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"; return 0 ;;
-        $'\r'*) MENU_KEY=""; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"; return 0 ;;
-        $'\033OA'*) MENU_KEY="up"; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:3}"; return 0 ;;
-        $'\033OB'*) MENU_KEY="down"; MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:3}"; return 0 ;;
+    next=""
+    if ! IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" next; then
+        MENU_KEY="escape"
+        return 0
+    fi
+
+    case "$next" in
+        O)
+            final=""
+            IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" final || final=""
+            case "$final" in
+                A) MENU_KEY="up" ;;
+                B) MENU_KEY="down" ;;
+                *) MENU_KEY="ignore" ;;
+            esac
+            ;;
+        '[')
+            # CSI parameters (for example 1;5) end at the first final byte.
+            while :; do
+                final=""
+                IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" final || {
+                    MENU_KEY="ignore"
+                    return 0
+                }
+                case "$final" in
+                    A) MENU_KEY="up"; return 0 ;;
+                    B) MENU_KEY="down"; return 0 ;;
+                    [a-zA-Z~]) MENU_KEY="ignore"; return 0 ;;
+                esac
+            done
+            ;;
+        *) MENU_KEY="ignore" ;;
     esac
-
-    if [[ "$MENU_INPUT_BUFFER" =~ $csi_arrow_regex ]]; then
-        sequence="${BASH_REMATCH[0]}"
-        case "${BASH_REMATCH[1]}" in
-            A) MENU_KEY="up" ;;
-            B) MENU_KEY="down" ;;
-        esac
-        MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:${#sequence}}"
-        return 0
-    fi
-
-    if [ "${MENU_INPUT_BUFFER:0:1}" = $'\033' ]; then
-        if [ "${#MENU_INPUT_BUFFER}" -eq 1 ]; then
-            MENU_KEY="escape"
-        else
-            # Home/End/function keys are not actions here. Ignore their packet
-            # instead of treating an unfamiliar escape sequence as a request
-            # to quit the picker.
-            MENU_KEY="ignore"
-        fi
-        MENU_INPUT_BUFFER=""
-        return 0
-    fi
-
-    MENU_KEY="${MENU_INPUT_BUFFER:0:1}"
-    MENU_INPUT_BUFFER="${MENU_INPUT_BUFFER:1}"
 }
 
 menu_read_key() {
@@ -1074,7 +1075,7 @@ menu_select() {
     menu_prepare_input || { leave_screen; return 1; }
 
     while :; do
-        menu_draw "$active"
+        menu_draw
 
         menu_read_key || { leave_screen; return 1; }
         key="$MENU_KEY"
@@ -1123,15 +1124,18 @@ menu_select() {
 build_menu() {
     local active="$1"
     local slug
+    local marker
     local i=0
 
-    MENU_KEYS=""
+    MENU_KEYS=()
+    MENU_ROWS=()
     MENU_CURSOR=0
 
     while IFS= read -r slug; do
         [ -n "$slug" ] || continue
-        MENU_KEYS="${MENU_KEYS}${slug}
-"
+        MENU_KEYS[$i]="$slug"
+        if [ "$slug" = "$active" ]; then marker="*"; else marker=" "; fi
+        MENU_ROWS[$i]="$(render_row "$slug" "$marker")"
         if [ "$slug" = "$active" ]; then
             MENU_CURSOR="$i"
         fi
@@ -1140,7 +1144,8 @@ build_menu() {
 $(list_profiles)
 EOF
 
-    MENU_KEYS="${MENU_KEYS}__add__"
+    MENU_KEYS[$i]="__add__"
+    MENU_ROWS[$i]="+ add another account (browser sign-in)"
     MENU_COUNT=$((i + 1))
 }
 

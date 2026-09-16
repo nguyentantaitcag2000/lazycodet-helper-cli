@@ -15,6 +15,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   sequences are ignored instead of being mistaken for a bare ESC. Moving the
   cursor also redraws in place instead of clearing the alternate screen between
   frames, removing the visible flash that made the list look as if it reloaded.
+  A long-lived input proxy replaces the per-key helper process, and account rows
+  are rendered once before the picker opens instead of reparsing their JSON on
+  every movement, so navigation stays responsive like the `fzf`-based pickers.
 
 ## [2026-09-15]
 
