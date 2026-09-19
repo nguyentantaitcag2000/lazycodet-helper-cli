@@ -53,6 +53,23 @@ assert_file_lacks() {
     fi
 }
 
+# Cursor movement is latency-sensitive. These structural guards complement the
+# behavior tests below: an implementation can produce the right screen while
+# still feeling slow if it reparses account data or starts a process per key.
+MENU_DRAW_SOURCE="$(sed -n '/^menu_draw() {/,/^}/p' "$CMD")"
+for forbidden in 'render_row' 'json_get' 'profile_email'; do
+    if printf '%s\n' "$MENU_DRAW_SOURCE" | grep -qF -- "$forbidden"; then
+        fail "menu_draw hot path must not call ${forbidden}"
+    fi
+done
+
+MENU_KEY_SOURCE="$(sed -n '/^menu_read_packet_key() {/,/^}/p' "$CMD")"
+for forbidden in 'dd ' 'cat ' 'node ' 'python3 '; do
+    if printf '%s\n' "$MENU_KEY_SOURCE" | grep -qF -- "$forbidden"; then
+        fail "menu_read_packet_key hot path must not start ${forbidden% }"
+    fi
+done
+
 # The command reads ~/.claude.json through node or python3, whichever it finds.
 # Both readers have to behave identically, so the whole suite is replayed once
 # per reader this machine actually has.
