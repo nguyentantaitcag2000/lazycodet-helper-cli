@@ -3,7 +3,7 @@
 Keeps several Claude Code logins on one machine and switches which of them
 `claude` is signed in as. Run it with no arguments for a picker: up and down
 move, ENTER switches, `[a]` signs in to another account, `[d]` forgets one,
-`[q]` or ESC quits.
+`[e]` exports one, `[i]` imports one, and `[q]` or ESC quits.
 
 ```
   Claude accounts
@@ -12,7 +12,7 @@ move, ENTER switches, `[a]` signs in to another account, `[d]` forgets one,
   > * beta   beta@example.com   team  token valid until 2026-09-15 23:53
     + add another account (browser sign-in)
 
-  up/down move   ENTER switch   [a] add   [d] forget   [q] quit
+  up/down move   ENTER switch   [a] add   [e] export   [i] import   [d] forget   [q] quit
 ```
 
 `*` marks the account `claude` is signed in as right now.
@@ -25,12 +25,43 @@ lazy claude --add --name work   # ... and name it yourself
 lazy claude --list           # print the accounts, change nothing
 lazy claude --current        # print the name of the account in use
 lazy claude --remove beta    # forget a saved account
+lazy claude --export beta    # write ./claude-auth-beta.json
+lazy claude --export beta --output /path/to/beta.json
+lazy claude --import /path/to/beta.json
+lazy claude --import /path/to/beta.json --name beta-mac
 lazy claude beta -y          # skip the confirmations
 ```
 
-The first run has nothing saved yet, so it adopts the login already on the
-machine and names it after the email local part. Nothing about that login is
-changed.
+On the first run, it adopts any login already on the machine and names it after
+the email local part. If there is no login, the picker still opens: press `[a]`
+to sign in through the browser or `[i]` to import a transferred auth file.
+Nothing about an adopted login is changed.
+
+## Moving a login to another machine
+
+Highlight an account in the picker and press `[e]`, or export it directly:
+
+```bash
+lazy claude --export work --output ./claude-auth-work.json
+```
+
+Move that file to the other machine, open `lazy claude`, press `[i]`, and enter
+its path. For scripts, use `lazy claude --import <file>`. The portable file
+contains only the selected account's credentials and identity; it does not
+contain project history, MCP servers, settings, or other saved accounts.
+
+Import previews the account and asks before changing the live login. It saves
+the account under `~/.claude-accounts`, writes its credentials to the store
+Claude Code uses on that machine, and merges only the account identity and
+onboarding fields into `~/.claude.json`. Existing project history, MCP servers,
+and settings remain unchanged; the previous live credentials and config retain
+the usual `.lazy.bak` recovery copies.
+
+The export is plain JSON containing a live refresh token. Treat it like a
+password: close Claude Code on the source machine, transfer the file through a
+trusted channel, and delete it after a successful import. Claude rotates refresh
+tokens, so continuing to use the same account on the source machine can
+invalidate the imported copy.
 
 ## Adding an account
 
@@ -79,6 +110,7 @@ its next renewal, which would land them on the account just switched in.
 | `~/.claude/policy-limits.json` | moved aside on a switch so the new account's limits are fetched |
 | `~/.claude-accounts/<name>/` | one directory per saved account: `credentials.json`, `account.json`, mode `700` |
 | `~/.claude-accounts/active` | the name of the account currently signed in |
+| `./claude-auth-<name>.json` | optional portable export, mode `600` where the filesystem supports it |
 
 Everything else in `~/.claude.json` — project history, MCP servers, settings —
 is left exactly as it was. The account-scoped caches in it (`modelAccessCache`,

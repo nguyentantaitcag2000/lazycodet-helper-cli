@@ -23,16 +23,19 @@ usage() {
     echo "  lazy claude --list           List the saved accounts and exit"
     echo "  lazy claude --current        Print the active account name and exit"
     echo "  lazy claude --remove <name>  Forget a saved account"
+    echo "  lazy claude --export <name>  Export one account to a portable auth file"
+    echo "  lazy claude --import <file>  Import and activate a portable auth file"
     echo ""
     echo "Saved logins live in ~/.claude-accounts, one directory per account."
     echo "Adding an account runs the OAuth flow in an isolated config directory,"
     echo "so the account you are signed in as right now is never touched."
     echo ""
-    echo "In the picker: up/down move, ENTER switches, [a] add, [d] forget,"
-    echo "[q] or ESC quits."
+    echo "In the picker: up/down move, ENTER switches, [a] add, [e] export,"
+    echo "[i] import, [d] forget, [q] or ESC quits."
     echo ""
     echo "Options:"
-    echo "      --name <name>  Name to save the new account under (with --add)"
+    echo "      --name <name>  Saved name (with --add or --import)"
+    echo "      --output <file> Export destination (with --export)"
     echo "  -y, --yes          Skip confirmation prompts"
     echo "  -h, --help         Show this help"
 }
@@ -40,6 +43,8 @@ usage() {
 MODE="pick"
 TARGET=""
 NEW_NAME=""
+OUTPUT_FILE=""
+IMPORT_FILE=""
 ASSUME_YES=0
 
 while [ $# -gt 0 ]; do
@@ -48,6 +53,24 @@ while [ $# -gt 0 ]; do
         --list) MODE="list" ;;
         --current) MODE="current" ;;
         --add) MODE="add" ;;
+        --export)
+            MODE="export"
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --export needs an account name" >&2
+                exit 1
+            fi
+            TARGET="$1"
+            ;;
+        --import)
+            MODE="import"
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --import needs an auth file" >&2
+                exit 1
+            fi
+            IMPORT_FILE="$1"
+            ;;
         --remove|--forget)
             MODE="remove"
             shift
@@ -64,6 +87,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             NEW_NAME="$1"
+            ;;
+        --output)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --output needs a file path" >&2
+                exit 1
+            fi
+            OUTPUT_FILE="$1"
             ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "Error: Unknown option -> $1"; echo ""; usage; exit 1 ;;
@@ -191,6 +222,54 @@ with open(t, "w") as fh:
     json.dump(cur, fh, indent=2)
 os.chmod(t, 0o600)
 os.replace(t, f)
+'
+
+JSON_EXPORT_NODE='
+const fs = require("fs");
+const cred = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const meta = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if (!meta.oauthAccount || !meta.oauthAccount.accountUuid) process.exit(2);
+const bundle = {
+  format: "lazy-claude-auth",
+  version: 1,
+  exportedAt: Number(process.argv[5]),
+  name: process.argv[4],
+  credentials: cred,
+  account: meta.oauthAccount
+};
+if (meta.userID) bundle.userID = meta.userID;
+const target = process.argv[3];
+const tmp = target + ".lazy.tmp";
+fs.writeFileSync(tmp, JSON.stringify(bundle, null, 2) + "\n", { mode: 0o600 });
+fs.renameSync(tmp, target);
+'
+
+JSON_EXPORT_PY='
+import json, os, sys
+with open(sys.argv[1]) as fh:
+    cred = json.load(fh)
+with open(sys.argv[2]) as fh:
+    meta = json.load(fh)
+account = meta.get("oauthAccount")
+if not isinstance(account, dict) or not account.get("accountUuid"):
+    sys.exit(2)
+bundle = {
+    "format": "lazy-claude-auth",
+    "version": 1,
+    "exportedAt": int(sys.argv[5]),
+    "name": sys.argv[4],
+    "credentials": cred,
+    "account": account,
+}
+if meta.get("userID"):
+    bundle["userID"] = meta["userID"]
+target = sys.argv[3]
+tmp = target + ".lazy.tmp"
+with open(tmp, "w") as fh:
+    json.dump(bundle, fh, indent=2)
+    fh.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, target)
 '
 
 detect_json_runner() {
@@ -746,6 +825,188 @@ report_switch() {
     echo "Run 'claude' to use it."
 }
 
+# ---------------------------------------------------------- portable auth file
+
+canonical_file_path() {
+    local path="$1"
+    local dir
+    local base
+
+    dir="$(dirname "$path")"
+    base="$(basename "$path")"
+    (cd "$dir" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$base")
+}
+
+export_account() {
+    local slug="$1"
+    local destination
+    local parent
+    local cred
+    local destination_path
+    local managed_path
+
+    if ! profile_exists "$slug"; then
+        say_err "No saved account named '${slug}'."
+        return 1
+    fi
+
+    cred="$(cat "$(profile_cred "$slug")" 2>/dev/null)"
+    if ! has_token "$cred"; then
+        say_err "'${slug}' has no usable token saved. Run 'lazy claude --add' to sign in again."
+        return 1
+    fi
+    if [ -z "$(profile_id "$slug")" ]; then
+        say_err "'${slug}' has no account identity, so it cannot be exported safely."
+        return 1
+    fi
+
+    destination="${OUTPUT_FILE:-./claude-auth-${slug}.json}"
+    parent="$(dirname "$destination")"
+    if [ ! -d "$parent" ]; then
+        say_err "The destination directory does not exist: ${parent}"
+        return 1
+    fi
+    if [ -d "$destination" ]; then
+        say_err "The export destination is a directory: ${destination}"
+        return 1
+    fi
+
+    destination_path="$(canonical_file_path "$destination")"
+    for managed_path in \
+        "$(profile_cred "$slug")" \
+        "$(profile_meta "$slug")" \
+        "$LIVE_CRED" \
+        "$LIVE_CONFIG"
+    do
+        if [ -d "$(dirname "$managed_path")" ] && \
+            [ "$destination_path" = "$(canonical_file_path "$managed_path")" ]; then
+            say_err "Refusing to overwrite a managed Claude file: ${destination}"
+            return 1
+        fi
+    done
+
+    if [ -e "$destination" ]; then
+        confirm "Replace ${destination}?" || { echo "Cancelled."; return 0; }
+    fi
+
+    if ! json_export "$(profile_cred "$slug")" "$(profile_meta "$slug")" \
+        "$destination" "$slug"; then
+        rm -f "${destination}.lazy.tmp"
+        say_err "Could not write the auth file: ${destination}"
+        return 1
+    fi
+
+    chmod 600 "$destination" 2>/dev/null || true
+    say_ok "exported '${slug}' to ${destination}"
+    say_warn "this file contains a live Claude refresh token - keep it private and delete it after import"
+}
+
+normalize_import_path() {
+    local value="$1"
+
+    # Terminal drag-and-drop commonly supplies a quoted path or escapes spaces.
+    # Expand only these predictable forms; never eval user input containing a
+    # credential-file path.
+    case "$value" in
+        \"*\") value="${value#\"}"; value="${value%\"}" ;;
+        \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    case "$value" in
+        "~") value="$HOME" ;;
+        "~/"*) value="${HOME}/${value#\~/}" ;;
+    esac
+    value="${value//\\ / }"
+    printf '%s' "$value"
+}
+
+import_account() {
+    local source
+    local format
+    local version
+    local cred
+    local account
+    local account_id
+    local email
+    local user_id
+    local bundle_name
+    local requested
+    local slug=""
+    local existing
+
+    source="$(normalize_import_path "$1")"
+    if [ ! -f "$source" ]; then
+        say_err "Auth file not found: ${source}"
+        return 1
+    fi
+
+    format="$(json_get "$source" format)"
+    version="$(json_get "$source" version)"
+    cred="$(json_get "$source" credentials)"
+    account="$(json_get "$source" account)"
+    account_id="$(json_get "$source" account.accountUuid)"
+    email="$(json_get "$source" account.emailAddress)"
+    user_id="$(json_get "$source" userID)"
+    bundle_name="$(json_get "$source" name)"
+
+    if [ "$format" != "lazy-claude-auth" ] || [ "$version" != "1" ]; then
+        say_err "Unsupported auth file. Expected lazy-claude-auth version 1."
+        return 1
+    fi
+    if ! has_token "$cred" || [ -z "$account" ] || [ -z "$account_id" ]; then
+        say_err "The auth file is incomplete or has no usable token."
+        return 1
+    fi
+    case "$user_id" in
+        ""|*[!A-Za-z0-9_.:-]*) user_id="" ;;
+    esac
+
+    # Account UUID is the identity. Re-importing refreshes the same saved
+    # profile instead of creating two copies whose rotating tokens would race.
+    while IFS= read -r existing; do
+        [ -n "$existing" ] || continue
+        if [ "$(profile_id "$existing")" = "$account_id" ]; then
+            slug="$existing"
+            break
+        fi
+    done <<EOF
+$(list_profiles)
+EOF
+
+    if [ -z "$slug" ]; then
+        requested="$(slugify "${NEW_NAME:-$bundle_name}")"
+        [ -n "$requested" ] || requested="$(slugify "$email")"
+        [ -n "$requested" ] || requested="account"
+        if [ -n "$NEW_NAME" ] && profile_exists "$requested"; then
+            say_err "An account named '${requested}' is already saved."
+            return 1
+        fi
+        slug="$(unique_slug "$requested")"
+    fi
+
+    echo ""
+    printf '%sImport Claude account%s\n' "$c_bold" "$c_reset"
+    say_dim "name: ${slug}"
+    [ -n "$email" ] && say_dim "account: ${email}"
+    say_dim "source: ${source}"
+    say_warn "Claude refresh tokens rotate; stop using this account on the source machine before importing"
+
+    warn_if_unarchived || { echo "Cancelled."; return 0; }
+    warn_if_running || { echo "Cancelled."; return 0; }
+    confirm "Import and use this account now?" || { echo "Cancelled."; return 0; }
+
+    if ! save_profile "$slug" "$cred" "$account" "$user_id"; then
+        say_err "Could not save the imported account."
+        return 1
+    fi
+    if ! switch_to "$slug"; then
+        say_err "The account was saved as '${slug}', but could not be activated."
+        return 1
+    fi
+
+    say_ok "imported '${slug}' from ${source}"
+    report_switch "$slug"
+}
+
 # -------------------------------------------------------------- add an account
 
 claude_bin() {
@@ -867,55 +1128,75 @@ EOF
 
 # ------------------------------------------------------------------ the picker
 
-MENU_KEYS=""
+MENU_KEYS=()
+MENU_ROWS=()
 MENU_COUNT=0
 MENU_CURSOR=0
+MENU_KEY=""
+MENU_ANSWER=""
+MENU_PACKET_INPUT=0
+MENU_INPUT_FD=3
+MENU_READER_PID=""
+MENU_STTY_STATE=""
+MENU_DRAWN=0
 
 menu_key_at() {
-    printf '%s\n' "$MENU_KEYS" | sed -n "$(( $1 + 1 ))p"
+    printf '%s' "${MENU_KEYS[$1]:-}"
+}
+
+json_export() {
+    case "$JSON_RUNNER" in
+        node) node -e "$JSON_EXPORT_NODE" "$1" "$2" "$3" "$4" "$NOW_MS" ;;
+        python3) python3 -c "$JSON_EXPORT_PY" "$1" "$2" "$3" "$4" "$NOW_MS" ;;
+    esac
 }
 
 menu_draw() {
-    local active="$1"
     local i=0
-    local slug
-    local marker
     local line
 
-    printf '\033[H\033[2J' >> "$TTY_OUT"
+    # Clear only the first frame. Clearing before every redraw briefly exposes
+    # a blank alternate screen, which looks like the list is reloading. Later
+    # frames overwrite in place; synchronized output makes the update atomic on
+    # terminals that support it and is harmless on terminals that do not.
+    if [ "$MENU_DRAWN" -eq 0 ]; then
+        printf '\033[?2026h\033[H\033[2J' >> "$TTY_OUT"
+        MENU_DRAWN=1
+    else
+        printf '\033[?2026h\033[H' >> "$TTY_OUT"
+    fi
     printf '\n  %sClaude accounts%s\n\n' "$c_bold" "$c_reset" >> "$TTY_OUT"
 
-    while IFS= read -r slug; do
-        [ -n "$slug" ] || continue
-        if [ "$slug" = "__add__" ]; then
-            line="+ add another account (browser sign-in)"
-        else
-            if [ "$slug" = "$active" ]; then marker="*"; else marker=" "; fi
-            line="$(render_row "$slug" "$marker")"
-        fi
-
+    while [ "$i" -lt "$MENU_COUNT" ]; do
+        line="${MENU_ROWS[$i]}"
         if [ "$i" -eq "$MENU_CURSOR" ]; then
             printf '  %s> %s%s\n' "$c_sel" "$line" "$c_reset" >> "$TTY_OUT"
         else
             printf '    %s\n' "$line" >> "$TTY_OUT"
         fi
         i=$((i + 1))
-    done <<EOF
-$MENU_KEYS
-EOF
+    done
 
     printf '\n  %s%s%s\n' "$c_dim" \
-        "up/down move   ENTER switch   [a] add   [d] forget   [q] quit" "$c_reset" >> "$TTY_OUT"
+        "up/down move   ENTER switch   [a] add   [e] export   [i] import   [d] forget   [q] quit" "$c_reset" >> "$TTY_OUT"
+    printf '\033[J\033[?2026l' >> "$TTY_OUT"
 }
 
 # The prompt goes to the terminal, not to stdout: the caller captures stdout to
 # read the chosen action, and a prompt written there would be captured with it.
 menu_ask() {
     local answer=""
+    local restore_packet="$MENU_PACKET_INPUT"
+
+    menu_restore_input
     printf '\033[?25h  %s ' "$1" >> "$TTY_OUT"
     IFS= read -r answer <&3 || answer=""
     printf '\033[?25l' >> "$TTY_OUT"
-    printf '%s' "$answer"
+    MENU_ANSWER="$answer"
+
+    if [ "$restore_packet" -eq 1 ]; then
+        menu_prepare_input || return 1
+    fi
 }
 
 have_terminal() {
@@ -928,7 +1209,121 @@ have_terminal() {
 }
 
 leave_screen() {
-    printf '\033[?25h\033[?1049l' >> "$TTY_OUT" 2>/dev/null || true
+    menu_restore_input
+    printf '\033[?2026l\033[?25h\033[?1049l' >> "$TTY_OUT" 2>/dev/null || true
+}
+
+menu_restore_input() {
+    if [ -n "$MENU_READER_PID" ]; then
+        kill "$MENU_READER_PID" 2>/dev/null || true
+        wait "$MENU_READER_PID" 2>/dev/null || true
+        MENU_READER_PID=""
+    fi
+    if [ "$MENU_INPUT_FD" -eq 4 ]; then
+        exec 4<&-
+        MENU_INPUT_FD=3
+    fi
+    if [ -n "$MENU_STTY_STATE" ]; then
+        stty "$MENU_STTY_STATE" <&3 2>/dev/null || true
+        MENU_STTY_STATE=""
+    fi
+}
+
+menu_prepare_input() {
+    MENU_PACKET_INPUT=0
+
+    # Bash `read -n1` on a Windows PTY can consume the whole console input
+    # record while returning only its first byte. A single long-lived `cat`
+    # reads each record intact and forwards it to a pipe, where Bash can consume
+    # the bytes without loss. Keeping that proxy alive also avoids spawning a
+    # `dd` process for every key press.
+    if is_git_bash || [ "${LAZY_CLAUDE_PACKET_INPUT:-0}" = "1" ]; then
+        MENU_PACKET_INPUT=1
+        MENU_INPUT_FD=3
+
+        # File-backed input is the test harness and needs no terminal mode.
+        if [ -z "${LAZY_CLAUDE_TTY_IN:-}" ]; then
+            MENU_STTY_STATE="$(stty -g <&3 2>/dev/null)" || return 1
+            stty -echo -icanon min 1 time 0 <&3 2>/dev/null || {
+                MENU_STTY_STATE=""
+                return 1
+            }
+            exec 4< <(cat <&3)
+            MENU_READER_PID=$!
+            MENU_INPUT_FD=4
+        fi
+    fi
+}
+
+menu_read_packet_key() {
+    local first
+    local next
+    local final
+
+    IFS= read -rsn1 -u "$MENU_INPUT_FD" first || return 1
+    if [ "$first" != $'\033' ]; then
+        MENU_KEY="$first"
+        return 0
+    fi
+
+    next=""
+    if ! IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" next; then
+        MENU_KEY="escape"
+        return 0
+    fi
+
+    case "$next" in
+        O)
+            final=""
+            IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" final || final=""
+            case "$final" in
+                A) MENU_KEY="up" ;;
+                B) MENU_KEY="down" ;;
+                *) MENU_KEY="ignore" ;;
+            esac
+            ;;
+        '[')
+            # CSI parameters (for example 1;5) end at the first final byte.
+            while :; do
+                final=""
+                IFS= read -rsn1 -t 1 -u "$MENU_INPUT_FD" final || {
+                    MENU_KEY="ignore"
+                    return 0
+                }
+                case "$final" in
+                    A) MENU_KEY="up"; return 0 ;;
+                    B) MENU_KEY="down"; return 0 ;;
+                    [a-zA-Z~]) MENU_KEY="ignore"; return 0 ;;
+                esac
+            done
+            ;;
+        *) MENU_KEY="ignore" ;;
+    esac
+}
+
+menu_read_key() {
+    local key
+    local rest
+
+    MENU_KEY=""
+    if [ "$MENU_PACKET_INPUT" -eq 1 ]; then
+        menu_read_packet_key
+        return $?
+    fi
+
+    IFS= read -rsn1 key <&3 || return 1
+    if [ "$key" = $'\033' ]; then
+        # A bare ESC quits; an arrow key sends "[A"/"[B" right behind it.
+        # The timeout is whole seconds because bash 3.2 rejects fractions.
+        rest=""
+        IFS= read -rsn2 -t 1 rest <&3 || rest=""
+        case "$rest" in
+            "[A") key="up" ;;
+            "[B") key="down" ;;
+            *) key="escape" ;;
+        esac
+    fi
+    MENU_KEY="$key"
 }
 
 # Draws on the alternate screen the way nano does, so the picker never scrolls
@@ -936,7 +1331,6 @@ leave_screen() {
 menu_select() {
     local active="$1"
     local key
-    local rest
     local chosen
 
     trap 'leave_screen' EXIT
@@ -946,24 +1340,13 @@ menu_select() {
     # One long-lived descriptor rather than reopening per key: an arrow sends
     # three bytes and the tail has to come off the same stream as the escape.
     exec 3< "$TTY_IN"
+    menu_prepare_input || { leave_screen; return 1; }
 
     while :; do
-        menu_draw "$active"
+        menu_draw
 
-        IFS= read -rsn1 key <&3 || { leave_screen; return 1; }
-
-        if [ "$key" = $'\033' ]; then
-            # A bare ESC quits; an arrow key sends "[A"/"[B" right behind it.
-            # The timeout is whole seconds because bash 3.2, which macOS still
-            # ships, rejects a fractional one.
-            rest=""
-            IFS= read -rsn2 -t 1 rest <&3 || rest=""
-            case "$rest" in
-                "[A") key="up" ;;
-                "[B") key="down" ;;
-                *) leave_screen; return 1 ;;
-            esac
-        fi
+        menu_read_key || { leave_screen; return 1; }
+        key="$MENU_KEY"
 
         case "$key" in
             up|k)
@@ -980,12 +1363,30 @@ menu_select() {
                     MENU_CURSOR=0
                 fi
                 ;;
-            q|Q) leave_screen; return 1 ;;
+            escape|q|Q) leave_screen; return 1 ;;
+            ignore) ;;
             a|A) leave_screen; printf 'add'; return 0 ;;
+            e|E)
+                chosen="$(menu_key_at "$MENU_CURSOR")"
+                if [ "$chosen" != "__add__" ]; then
+                    leave_screen
+                    printf 'export %s' "$chosen"
+                    return 0
+                fi
+                ;;
+            i|I)
+                menu_ask "Auth file path:" || { leave_screen; return 1; }
+                if [ -n "$MENU_ANSWER" ]; then
+                    leave_screen
+                    printf 'import %s' "$MENU_ANSWER"
+                    return 0
+                fi
+                ;;
             d|D)
                 chosen="$(menu_key_at "$MENU_CURSOR")"
                 if [ "$chosen" != "__add__" ]; then
-                    case "$(menu_ask "Forget '${chosen}'? [y/N]")" in
+                    menu_ask "Forget '${chosen}'? [y/N]" || { leave_screen; return 1; }
+                    case "$MENU_ANSWER" in
                         y|Y|yes|YES) leave_screen; printf 'remove %s' "$chosen"; return 0 ;;
                     esac
                 fi
@@ -1007,15 +1408,18 @@ menu_select() {
 build_menu() {
     local active="$1"
     local slug
+    local marker
     local i=0
 
-    MENU_KEYS=""
+    MENU_KEYS=()
+    MENU_ROWS=()
     MENU_CURSOR=0
 
     while IFS= read -r slug; do
         [ -n "$slug" ] || continue
-        MENU_KEYS="${MENU_KEYS}${slug}
-"
+        MENU_KEYS[$i]="$slug"
+        if [ "$slug" = "$active" ]; then marker="*"; else marker=" "; fi
+        MENU_ROWS[$i]="$(render_row "$slug" "$marker")"
         if [ "$slug" = "$active" ]; then
             MENU_CURSOR="$i"
         fi
@@ -1024,7 +1428,8 @@ build_menu() {
 $(list_profiles)
 EOF
 
-    MENU_KEYS="${MENU_KEYS}__add__"
+    MENU_KEYS[$i]="__add__"
+    MENU_ROWS[$i]="+ add another account (browser sign-in)"
     MENU_COUNT=$((i + 1))
 }
 
@@ -1125,6 +1530,17 @@ case "$MODE" in
         exit $?
         ;;
 
+    export)
+        export_account "$TARGET"
+        exit $?
+        ;;
+
+    import)
+        print_notes
+        import_account "$IMPORT_FILE"
+        exit $?
+        ;;
+
     switch)
         if ! profile_exists "$TARGET"; then
             say_err "No saved account named '${TARGET}'."
@@ -1153,17 +1569,19 @@ if ! have_terminal; then
     exit 1
 fi
 
-if [ "$PROFILE_COUNT" -eq 0 ]; then
-    echo "No accounts saved yet."
-    confirm "Sign in to one now?" || { echo "Cancelled."; exit 0; }
-    add_account
-    exit $?
-fi
-
 measure_rows
 build_menu "$ACTIVE"
 
 CHOICE="$(menu_select "$ACTIVE")" || { echo "Cancelled."; exit 0; }
+
+# An import path may contain spaces, so peel its action prefix without word
+# splitting. Picker-generated account actions use safe slug names below.
+case "$CHOICE" in
+    import\ *)
+        import_account "${CHOICE#import }"
+        exit $?
+        ;;
+esac
 
 # The action is one or two words, produced by this script - word splitting is
 # exactly what is wanted here.
@@ -1177,6 +1595,10 @@ case "${1:-}" in
         ;;
     remove)
         remove_account "${2:-}"
+        exit $?
+        ;;
+    export)
+        export_account "${2:-}"
         exit $?
         ;;
     switch)

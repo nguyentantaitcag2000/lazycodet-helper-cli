@@ -27,6 +27,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   monorepo root, uses `sudo` only when ownership or group requires it,
   `--check` reports without changing anything, and it refuses Windows drives
   under WSL, where chmod and chown would not stick. Linux and WSL only.
+- `lazy claude`: exports a selected saved account as a portable versioned JSON
+  auth file with `[e]` or `--export <name>`, and imports one with `[i]` or
+  `--import <file>`. Import archives and activates the account through the
+  destination's actual credential store, including the macOS keychain. The
+  bundle contains only that account's credentials and identity; project
+  history, MCP settings, and other accounts stay intact. Writes are atomic,
+  existing live files retain the usual `.lazy.bak` recovery copies, and invalid
+  bundles are rejected before they can change the login.
+
+## [2026-09-16]
+
+### Fixed
+
+- `lazy claude`: arrow keys no longer close the account picker as `Cancelled.`
+  on Git Bash terminals whose Windows PTY delivers an escape sequence as one
+  input record. The picker reads that record once and decodes standard CSI,
+  application-cursor and modified up/down sequences; unfamiliar escape
+  sequences are ignored instead of being mistaken for a bare ESC. Moving the
+  cursor also redraws in place instead of clearing the alternate screen between
+  frames, removing the visible flash that made the list look as if it reloaded.
+  A long-lived input proxy replaces the per-key helper process, and account rows
+  are rendered once before the picker opens instead of reparsing their JSON on
+  every movement, so navigation stays responsive like the `fzf`-based pickers.
 
 ## [2026-09-15]
 

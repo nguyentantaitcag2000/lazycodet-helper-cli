@@ -10,7 +10,7 @@ macOS, and Git Bash (Windows).
 | [`lazy agent.sync`](docs/agent.sync.md) | Link Codex agent config to the Claude-owned source files in any Git project |
 | [`lazy branch.history`](docs/branch.history.md) | Pick a recently checked-out branch and switch to it |
 | [`lazy caffeinate`](docs/caffeinate.md) | List and stop the `caffeinate` processes keeping a Mac awake |
-| [`lazy claude`](docs/claude.md) | Pick which of your saved Claude Code accounts is signed in, or add one through the browser |
+| [`lazy claude`](docs/claude.md) | Pick, add, switch, export, or import saved Claude Code accounts |
 | [`lazy claude.auth`](docs/claude.auth.md) | Sync the Claude Code login between Windows and a WSL distro, in whichever direction is still valid |
 | [`lazy fix.font`](docs/fix.font.md) | Fix garbled Vietnamese / accented text on Windows |
 | [`lazy git.commit`](docs/git.commit.md) | Pick changed files and commit only those files without disturbing other staged changes |

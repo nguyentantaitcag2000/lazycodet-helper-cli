@@ -6,6 +6,27 @@ explicit platform branch where their tools or semantics differ.
 
 When adding a feature or making a significant change, update `CHANGELOG.md`.
 
+## Interactive Terminal Menus
+
+Treat every keypress handler and redraw loop as a hot path. Build and format
+the rows before entering the loop; moving the cursor must not reread files,
+parse JSON, or start external commands. If a platform needs a helper process
+for input, keep one helper alive for the whole picker and clean it up on every
+exit path rather than starting one process per keypress.
+
+Git Bash uses an MSYS Windows PTY. A single arrow key may arrive as one console
+input record, and Bash `read -n1` can return ESC while consuming the remaining
+bytes. Interactive menus on Git Bash must read and decode complete escape
+sequences from one stable stream instead of splitting a sequence across direct
+reads from the Windows PTY. Support the CSI and SS3 forms emitted by common
+terminals, and add regression coverage for any platform-specific input path.
+
+Redraw an interactive menu in place. Clear the alternate screen only for the
+first frame, then move home and overwrite cached rows; clearing on every key
+causes visible flashing. Every interactive picker must have regression tests
+for navigation, escape-sequence handling, redraw behavior, and cleanup of any
+long-lived input helper.
+
 ## Platform Parity
 
 Feature parity across platforms is **not** required. A command or option may be
