@@ -27,11 +27,11 @@ usage_output() {
 }
 
 assert_has() {
-    printf '%s\n' "$1" | grep -qF -- "$2" || fail "expected output to contain: $2"
+    grep -qF -- "$2" <<<"$1" || fail "expected output to contain: $2"
 }
 
 assert_lacks() {
-    if printf '%s\n' "$1" | grep -qF -- "$2"; then
+    if grep -qF -- "$2" <<<"$1"; then
         fail "expected output to omit: $2"
     fi
 }
@@ -140,7 +140,11 @@ fi
 
 # The launcher must work through a relative symlink without GNU readlink -f.
 ln -s "$CLI" "$TEST_ROOT/lazy"
-SYMLINK_USAGE="$(cd "$TEST_ROOT" && bash ./lazy 2>&1 || true)"
-assert_has "$SYMLINK_USAGE" "lazy agent.sync"
+if [ -h "$TEST_ROOT/lazy" ]; then
+    SYMLINK_USAGE="$(cd "$TEST_ROOT" && bash ./lazy 2>&1 || true)"
+    assert_has "$SYMLINK_USAGE" "lazy agent.sync"
+else
+    echo "  (skipped the symlink launcher check: this filesystem did not create a symlink)"
+fi
 
 echo "platform tests passed ($CURRENT_PLATFORM)"

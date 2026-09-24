@@ -277,6 +277,72 @@ GAMMA_DIRS=("$STORE"/gamma*)
 [ "${#GAMMA_DIRS[@]}" -eq 1 ] || fail "a duplicate profile was created for gamma"
 assert_file_has "$STORE/gamma/credentials.json" "rt-gamma-2"
 
+# A portable export contains only the selected login and its identity. It must
+# not leak ~/.claude.json project history or any other saved account.
+BUNDLE="$TEST_ROOT/claude-auth-gamma.json"
+OUT="$(run --export gamma --output "$BUNDLE" -y)"
+assert_has "$OUT" "exported 'gamma'"
+assert_file_has "$BUNDLE" '"format": "lazy-claude-auth"'
+assert_file_has "$BUNDLE" '"refreshToken": "rt-gamma-2"'
+assert_file_has "$BUNDLE" '"emailAddress": "gamma@example.com"'
+assert_file_lacks "$BUNDLE" "/tmp/some-project"
+assert_file_lacks "$BUNDLE" "rt-beta-2"
+
+OUT="$(run --export gamma --output "$STORE/gamma/credentials.json" -y || true)"
+assert_has "$OUT" "Refusing to overwrite a managed Claude file"
+assert_file_has "$STORE/gamma/credentials.json" "rt-gamma-2"
+
+# Import through `lazy claude --import` on a clean pretend machine.
+# The account is both archived for later switching and installed as the live
+# Claude login, just as a Windows -> macOS move needs.
+IMPORT_HOME="$TEST_ROOT/import-home"
+IMPORT_STORE="$TEST_ROOT/import-store"
+mkdir -p "$IMPORT_HOME"
+OUT="$(
+    HOME="$IMPORT_HOME" PATH="$BIN:$PATH" LAZY_CLAUDE_STORE="$IMPORT_STORE" \
+    LAZY_CLAUDE_JSON_RUNNER="$JSON_RUNNER" CLAUDE_CONFIG_DIR="" NO_COLOR=1 \
+        bash "$CMD" --import "$BUNDLE" -y 2>&1
+)"
+assert_has "$OUT" "imported 'gamma'"
+assert_file_has "$IMPORT_HOME/.claude/.credentials.json" "rt-gamma-2"
+assert_file_has "$IMPORT_HOME/.claude.json" "gamma@example.com"
+assert_file_has "$IMPORT_STORE/gamma/credentials.json" "rt-gamma-2"
+[ "$(cat "$IMPORT_STORE/active")" = "gamma" ] || fail "imported account was not made active"
+
+# A brand-new machine with no saved or live account must still open the picker,
+# because [i] is how the transferred login gets onto that machine.
+EMPTY_PICK_HOME="$TEST_ROOT/empty-picker-home"
+EMPTY_PICK_STORE="$TEST_ROOT/empty-picker-store"
+EMPTY_PICK_KEYS="$TEST_ROOT/empty-picker-keys"
+EMPTY_PICK_SCREEN="$TEST_ROOT/empty-picker-screen"
+mkdir -p "$EMPTY_PICK_HOME"
+printf 'i%s\n' "$BUNDLE" > "$EMPTY_PICK_KEYS"
+OUT="$(
+    HOME="$EMPTY_PICK_HOME" PATH="$BIN:$PATH" LAZY_CLAUDE_STORE="$EMPTY_PICK_STORE" \
+    LAZY_CLAUDE_JSON_RUNNER="$JSON_RUNNER" CLAUDE_CONFIG_DIR="" NO_COLOR=1 \
+    LAZY_CLAUDE_TTY_IN="$EMPTY_PICK_KEYS" LAZY_CLAUDE_TTY_OUT="$EMPTY_PICK_SCREEN" \
+        bash "$CMD" -y 2>&1
+)"
+assert_has "$OUT" "imported 'gamma'"
+assert_file_has "$EMPTY_PICK_SCREEN" "[i] import"
+assert_file_has "$EMPTY_PICK_HOME/.claude/.credentials.json" "rt-gamma-2"
+
+BAD_BUNDLE="$TEST_ROOT/not-an-auth-file.json"
+printf '{"format":"something-else","version":1}\n' > "$BAD_BUNDLE"
+IMPORTED_BEFORE="$(cat "$IMPORT_HOME/.claude/.credentials.json")"
+set +e
+OUT="$(
+    HOME="$IMPORT_HOME" PATH="$BIN:$PATH" LAZY_CLAUDE_STORE="$IMPORT_STORE" \
+    LAZY_CLAUDE_JSON_RUNNER="$JSON_RUNNER" CLAUDE_CONFIG_DIR="" NO_COLOR=1 \
+        bash "$CMD" --import "$BAD_BUNDLE" -y 2>&1
+)"
+STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail "an unsupported auth bundle should fail"
+assert_has "$OUT" "Unsupported auth file"
+[ "$(cat "$IMPORT_HOME/.claude/.credentials.json")" = "$IMPORTED_BEFORE" ] ||
+    fail "a rejected auth bundle changed the live login"
+
 # ------------------------------------------------------- an abandoned sign-in
 
 BEFORE="$(cat "$LIVE_CRED")"
@@ -377,6 +443,22 @@ assert_has "$OUT" "now signed in as 'beta'"
 OUT="$(pick 'q')"
 assert_has "$OUT" "Cancelled."
 [ "$(run --current)" = "beta" ] || fail "quitting the picker changed the login"
+
+# e exports the highlighted account without changing which login is active.
+OUT="$(cd "$TEST_ROOT" && pick 'e')"
+assert_has "$OUT" "exported 'beta'"
+assert_file_has "$TEST_ROOT/claude-auth-beta.json" '"refreshToken": "rt-beta-2"'
+[ "$(run --current)" = "beta" ] || fail "exporting from the picker changed the login"
+
+# i asks for a portable auth path and imports it without losing spaces through
+# the picker action handoff.
+PICKER_IMPORT_DIR="$FAKE_HOME/auth files"
+mkdir -p "$PICKER_IMPORT_DIR"
+cp "$TEST_ROOT/claude-auth-beta.json" "$PICKER_IMPORT_DIR/beta login.json"
+OUT="$(pick 'i~/auth\ files/beta\ login.json\n')"
+assert_has "$OUT" "imported 'beta'"
+assert_file_has "$SCREEN" "Auth file path:"
+[ "$(run --current)" = "beta" ] || fail "picker import did not activate beta"
 
 # So does ESC on its own.
 OUT="$(pick '\033')"

@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-24]
+
+### Added
+
+- `lazy claude`: exports a selected saved account as a portable versioned JSON
+  auth file with `[e]` or `--export <name>`, and imports one with `[i]` or
+  `--import <file>`. Import archives and activates the account through the
+  destination's actual credential store, including the macOS keychain. The
+  bundle contains only that account's credentials and identity; project
+  history, MCP settings, and other accounts stay intact. Writes are atomic,
+  existing live files retain the usual `.lazy.bak` recovery copies, and invalid
+  bundles are rejected before they can change the login.
+
 ## [2026-09-16]
 
 ### Fixed
