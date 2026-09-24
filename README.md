@@ -16,6 +16,7 @@ macOS, and Git Bash (Windows).
 | [`lazy git.commit`](docs/git.commit.md) | Pick changed files and commit only those files without disturbing other staged changes |
 | [`lazy git.remember`](docs/git.remember.md) | Store this repo's Git login so it stops asking |
 | [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port, in this machine or in another WSL distro |
+| [`lazy laravel.fix-permission`](docs/laravel.fix-permission.md) | Make a Laravel project's `storage/` and `bootstrap/cache/` writable by both you and PHP, now and for files created later |
 | [`lazy update`](docs/update.md) | Update the installed CLI |
 
 Run `lazy` to list the commands available on your current platform, or

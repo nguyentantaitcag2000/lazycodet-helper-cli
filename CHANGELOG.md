@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-24]
+
+### Added
+
+- `lazy laravel.fix-permission`: makes a Laravel project's `storage/` and
+  `bootstrap/cache/` writable by both you and the PHP process, and keeps them
+  that way for files created later. Directories become `2775` (setgid, so new
+  files inherit the PHP group), files `664`, owner you and group the one PHP
+  runs as, plus a default ACL that grants both sides read/write on every file
+  created afterwards - the log that `docker exec ... php artisan` writes as root,
+  or that php-fpm writes with a `644` umask, stays writable for the other side.
+
+  Unlike `chmod -R 775`, it never puts the execute bit on plain files, which is
+  what made every tracked `.gitignore` under `storage/` show up as a Git mode
+  change; files that `HEAD` records as executable keep that bit. The PHP group
+  is read from the Docker container that bind-mounts the project (via
+  `docker top`, numeric, so no `ps` in the image and no matching group name on
+  the host is needed), then from PHP processes on the machine itself -
+  skipping container processes the host's `ps` also lists - and falls back to
+  your own group. It finds the project from anywhere inside it or from a
+  monorepo root, uses `sudo` only when ownership or group requires it,
+  `--check` reports without changing anything, and it refuses Windows drives
+  under WSL, where chmod and chown would not stick. Linux and WSL only.
+
 ## [2026-09-15]
 
 ### Added

@@ -30,3 +30,6 @@ jobs:
 
       - name: Test claude
         run: bash tests/claude.test.sh
+
+      - name: Test laravel.fix-permission
+        run: bash tests/laravel.fix-permission.test.sh
