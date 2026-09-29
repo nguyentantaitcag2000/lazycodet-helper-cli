@@ -11,20 +11,21 @@ Status meanings:
   does not exist there.
 - **Not implemented** — applicable in principle, but support has not been built.
 
-| Command | Linux | WSL | macOS | Git Bash (Windows) |
-|---|---|---|---|---|
-| `agent.sync` | Supported | Supported | Supported | Supported¹ |
-| `backup` | Supported | Supported | Supported | Supported |
-| `branch.history` | Supported | Supported | Supported | Supported |
-| `caffeinate` | Excluded² | Excluded² | Supported | Excluded² |
-| `claude` | Supported | Supported | Supported⁵ | Supported |
-| `claude.auth` | Excluded³ | Excluded³ | Excluded³ | Supported |
-| `fix.font` | Excluded⁴ | Excluded⁴ | Excluded⁴ | Supported |
-| `git.commit` | Supported | Supported | Supported | Supported |
-| `git.remember` | Supported | Supported | Supported | Supported |
-| `kill` | Supported (local) | Supported (local, WSL distros, Windows host) | Supported (local) | Supported (Windows host and WSL distros) |
-| `restore` | Supported | Supported | Supported | Supported |
-| `update` | Supported | Supported | Supported | Supported |
+| Command                  | Linux             | WSL                                          | macOS             | Git Bash (Windows)                       |
+| ------------------------ | ----------------- | -------------------------------------------- | ----------------- | ---------------------------------------- |
+| `agent.sync`             | Supported         | Supported                                    | Supported         | Supported¹                               |
+| `backup`                 | Supported         | Supported                                    | Supported         | Supported                                |
+| `branch.history`         | Supported         | Supported                                    | Supported         | Supported                                |
+| `caffeinate`             | Excluded²         | Excluded²                                    | Supported         | Excluded²                                |
+| `claude`                 | Supported         | Supported                                    | Supported⁵        | Supported                                |
+| `claude.auth`            | Excluded³         | Excluded³                                    | Excluded³         | Supported                                |
+| `fix.font`               | Excluded⁴         | Excluded⁴                                    | Excluded⁴         | Supported                                |
+| `git.commit`             | Supported         | Supported                                    | Supported         | Supported                                |
+| `git.remember`           | Supported         | Supported                                    | Supported         | Supported                                |
+| `kill`                   | Supported (local) | Supported (local, WSL distros, Windows host) | Supported (local) | Supported (Windows host and WSL distros) |
+| `restore`                | Supported         | Supported                                    | Supported         | Supported                                |
+| `laravel.fix-permission` | Supported         | Supported⁶                                   | Not implemented⁷  | Excluded⁸                                |
+| `update`                 | Supported         | Supported                                    | Supported         | Supported                                |
 
 1. Creating native Windows symlinks requires Developer Mode or the **Create
    symbolic links** privilege.
@@ -42,6 +43,16 @@ Status meanings:
    keychain entry `Claude Code-credentials` on the macOS builds that keep the
    tokens there. Every write is verified by reading it back through the same
    store.
+6. Only for projects in the Linux filesystem. On a Windows drive (`/mnt/c`,
+   `/mnt/d`, a `9p`/`drvfs` mount) chown and chmod have no real effect, so the
+   command stops with an explanation instead of reporting a fix that did not
+   happen.
+7. The model applies to macOS, but the command relies on GNU `stat`/`find` and
+   POSIX `setfacl`, while macOS has BSD tools and its own ACL syntax
+   (`chmod +a`). It is not exposed there until that path is built and tested.
+8. `laravel.fix-permission` sets Unix owners, groups, mode bits, and ACLs. NTFS,
+   as seen from Git Bash, has none of those; `chmod` there is emulated and
+   `chown` does nothing. Run it inside WSL or the container instead.
 
 The source of truth for runtime availability is the command registry in
 `lazy.sh`. When this matrix and the registry disagree, update both in the same

@@ -42,6 +42,7 @@ COMMANDS=(
     "git.remember|linux,wsl,git-bash,macos|lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "kill|linux,wsl,git-bash,macos|lazy kill <port> [-y]|Kill what holds <port> on the scopes available here"
     "restore|linux,wsl,git-bash,macos|lazy restore [--repository <url>]|Choose and restore Claude or Codex agent files from backup"
+    "laravel.fix-permission|linux,wsl|lazy laravel.fix-permission [path] [--check] [-y]|Make storage/ and bootstrap/cache writable by you and PHP, without Git mode changes"
     "update|linux,wsl,git-bash,macos|lazy update|Update lazy to the latest version from origin"
 )
 

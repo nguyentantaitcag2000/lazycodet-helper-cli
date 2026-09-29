@@ -33,3 +33,6 @@ jobs:
 
       - name: Test backup and restore
         run: bash tests/backup-restore.test.sh
+
+      - name: Test laravel.fix-permission
+        run: bash tests/laravel.fix-permission.test.sh
