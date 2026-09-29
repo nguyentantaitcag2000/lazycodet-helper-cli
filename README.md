@@ -8,6 +8,7 @@ macOS, and Git Bash (Windows).
 | Command | What it does |
 |---|---|
 | [`lazy agent.sync`](docs/agent.sync.md) | Link Codex agent config to the Claude-owned source files in any Git project |
+| [`lazy backup`](docs/backup.md) | Back up Claude and Codex instructions, skills, rules, and custom agents |
 | [`lazy branch.history`](docs/branch.history.md) | Pick a recently checked-out branch and switch to it |
 | [`lazy caffeinate`](docs/caffeinate.md) | List and stop the `caffeinate` processes keeping a Mac awake |
 | [`lazy claude`](docs/claude.md) | Pick, add, switch, export, or import saved Claude Code accounts |
@@ -16,6 +17,7 @@ macOS, and Git Bash (Windows).
 | [`lazy git.commit`](docs/git.commit.md) | Pick changed files and commit only those files without disturbing other staged changes |
 | [`lazy git.remember`](docs/git.remember.md) | Store this repo's Git login so it stops asking |
 | [`lazy kill <port>`](docs/kill.md) | Kill whatever is listening on a port, in this machine or in another WSL distro |
+| [`lazy restore`](docs/restore.md) | Choose which Claude and Codex agent files to restore from backup |
 | [`lazy update`](docs/update.md) | Update the installed CLI |
 
 Run `lazy` to list the commands available on your current platform, or
@@ -49,5 +51,5 @@ On Git Bash, reload the shell once after installing:
 source ~/.bashrc
 ```
 
-`lazy branch.history` and `lazy git.commit` also need [fzf](https://github.com/junegunn/fzf)
+`lazy branch.history`, `lazy git.commit`, and `lazy restore` also need [fzf](https://github.com/junegunn/fzf)
 (`sudo apt install fzf`, `brew install fzf` on macOS, or `scoop install fzf` on Windows).

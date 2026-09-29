@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-29]
+
+### Added
+
+- `lazy backup`: links an existing Git repository on first use and backs up only
+  Claude Code and Codex agent material: global instruction files, skills,
+  rules, and Claude custom agents. Credentials, chat history, sessions,
+  plugins, general tool settings, Git config, and shell startup files are
+  explicitly outside the allowlist. Each detected group is archived with its
+  metadata intact, committed, and pushed; later runs reuse the saved link.
+- `lazy restore`: updates the linked backup checkout and opens an `fzf`
+  multi-select list with every item checked by default. Space toggles a row,
+  Enter restores only the checked groups, and Esc cancels. Archives and paths
+  are validated before any write, and current files are saved to a timestamped
+  local recovery directory before replacement.
+
 ## [2026-09-24]
 
 ### Added

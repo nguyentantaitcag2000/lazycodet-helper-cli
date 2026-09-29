@@ -32,6 +32,7 @@ COMMAND="$1"
 # never leaves the descriptions ragged.
 COMMANDS=(
     "agent.sync|linux,wsl,git-bash,macos|lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
+    "backup|linux,wsl,git-bash,macos|lazy backup [--repository <url>]|Back up Claude and Codex instructions, skills, rules, and custom agents"
     "branch.history|linux,wsl,git-bash,macos|lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
     "caffeinate|macos|lazy caffeinate [--list] [--kill-all]|List and stop the caffeinate processes keeping this Mac awake"
     "claude|linux,wsl,git-bash,macos|lazy claude [name] [--add|--export|--import]|Pick, switch, add, export, or import saved Claude Code accounts"
@@ -40,6 +41,7 @@ COMMANDS=(
     "git.commit|linux,wsl,git-bash,macos|lazy git.commit|Pick changed files and commit only those files (requires fzf)"
     "git.remember|linux,wsl,git-bash,macos|lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "kill|linux,wsl,git-bash,macos|lazy kill <port> [-y]|Kill what holds <port> on the scopes available here"
+    "restore|linux,wsl,git-bash,macos|lazy restore [--repository <url>]|Choose and restore Claude or Codex agent files from backup"
     "update|linux,wsl,git-bash,macos|lazy update|Update lazy to the latest version from origin"
 )
 

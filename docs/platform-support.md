@@ -14,6 +14,7 @@ Status meanings:
 | Command | Linux | WSL | macOS | Git Bash (Windows) |
 |---|---|---|---|---|
 | `agent.sync` | Supported | Supported | Supported | Supported¹ |
+| `backup` | Supported | Supported | Supported | Supported |
 | `branch.history` | Supported | Supported | Supported | Supported |
 | `caffeinate` | Excluded² | Excluded² | Supported | Excluded² |
 | `claude` | Supported | Supported | Supported⁵ | Supported |
@@ -22,6 +23,7 @@ Status meanings:
 | `git.commit` | Supported | Supported | Supported | Supported |
 | `git.remember` | Supported | Supported | Supported | Supported |
 | `kill` | Supported (local) | Supported (local, WSL distros, Windows host) | Supported (local) | Supported (Windows host and WSL distros) |
+| `restore` | Supported | Supported | Supported | Supported |
 | `update` | Supported | Supported | Supported | Supported |
 
 1. Creating native Windows symlinks requires Developer Mode or the **Create
