@@ -15,6 +15,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   previous representation, and `lazy restore` detects both formats as well as
   legacy archive backups automatically.
 
+### Changed
+
+- `lazy restore` keeps backed-up Codex command rules available for explicit
+  recovery but leaves that security-sensitive row unchecked by default. This
+  prevents a normal restore from silently carrying command allow rules to a
+  different machine.
+
 ## [2026-09-30]
 
 ### Added

@@ -35,7 +35,7 @@ cat > "$MOCK_BIN/fzf" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$@" > "${LAZY_TEST_FZF_ARGS:?}"
 case "${LAZY_TEST_FZF_MODE:-all}" in
-    all) cat ;;
+    all) grep -v "^codex-rules$(printf '\t')" ;;
     match) grep -F -- "${LAZY_TEST_FZF_MATCH:?}" ;;
     empty) cat >/dev/null; exit 0 ;;
     cancel) cat >/dev/null; exit 130 ;;
@@ -152,16 +152,17 @@ if run_source backup --format invalid > "$TEST_ROOT/backup-invalid.out" 2>&1; th
 fi
 assert_file_has "$TEST_ROOT/backup-invalid.out" "Unsupported backup format"
 
-# Restore on a new machine: fzf receives checkbox behavior, defaults all rows to
-# selected, and the command replaces each selected item only after fzf returns.
+# Restore on a new machine: fzf defaults standard rows to selected but leaves
+# security-sensitive Codex command rules unchecked.
 RESTORE_HOME="$TEST_ROOT/restore-home"
 RESTORE_CONFIG="$TEST_ROOT/restore-config"
 RESTORE_STATE="$TEST_ROOT/restore-state"
 RESTORE_REPO="$RESTORE_STATE/repository"
 FZF_ARGS="$TEST_ROOT/fzf-args"
-mkdir -p "$RESTORE_HOME/.claude/projects/demo" "$RESTORE_HOME/.codex/sessions"
+mkdir -p "$RESTORE_HOME/.claude/projects/demo" "$RESTORE_HOME/.codex/rules" "$RESTORE_HOME/.codex/sessions"
 printf 'local-claude\n' > "$RESTORE_HOME/.claude/CLAUDE.md"
 printf 'local-codex\n' > "$RESTORE_HOME/.codex/AGENTS.md"
+printf 'keep-local-codex-rule\n' > "$RESTORE_HOME/.codex/rules/default.rules"
 printf 'keep-claude-token\n' > "$RESTORE_HOME/.claude/.credentials.json"
 printf 'keep-claude-chat\n' > "$RESTORE_HOME/.claude/projects/demo/history.json"
 printf 'keep-codex-token\n' > "$RESTORE_HOME/.codex/auth.json"
@@ -180,6 +181,8 @@ run_restore() {
 run_restore restore --repository "$REMOTE" > "$TEST_ROOT/restore-all.out"
 [ "$(cat "$RESTORE_HOME/.claude/CLAUDE.md")" = "claude-v2" ] || fail "Claude instructions were not restored"
 [ "$(cat "$RESTORE_HOME/.codex/AGENTS.md")" = "codex-v2" ] || fail "Codex instructions were not restored"
+[ "$(cat "$RESTORE_HOME/.codex/rules/default.rules")" = "keep-local-codex-rule" ] ||
+    fail "default restore replaced unchecked Codex command rules"
 [ "$(cat "$RESTORE_HOME/.claude/skills/demo/SKILL.md")" = "claude-skill-v1" ] ||
     fail "Claude skill was not restored from folder format"
 [ ! -e "$RESTORE_HOME/.claude/skills/demo/.git" ] ||
@@ -189,11 +192,18 @@ run_restore restore --repository "$REMOTE" > "$TEST_ROOT/restore-all.out"
 [ "$(cat "$RESTORE_HOME/.codex/auth.json")" = "keep-codex-token" ] || fail "Codex credentials were changed"
 [ "$(cat "$RESTORE_HOME/.codex/sessions/chat.jsonl")" = "keep-codex-chat" ] || fail "Codex history was changed"
 assert_file_has "$FZF_ARGS" "--multi"
-assert_file_has "$FZF_ARGS" "load:select-all"
+assert_file_has "$FZF_ARGS" "load:select-all+last+deselect+first"
 assert_file_lacks "$FZF_ARGS" "start:select-all"
 assert_file_has "$FZF_ARGS" "space:toggle+down"
+assert_file_has "$FZF_ARGS" "Codex command rules are unchecked"
 find "$RESTORE_STATE/restore-backups" -name 'claude-instructions.tar' -print -quit | grep -q . ||
     fail "restore did not preserve the previous files"
+
+# Command rules remain available when the user explicitly checks that row.
+LAZY_TEST_FZF_MODE=match LAZY_TEST_FZF_MATCH="$(printf 'codex-rules\t')" \
+    run_restore restore > "$TEST_ROOT/restore-codex-rules.out"
+[ "$(cat "$RESTORE_HOME/.codex/rules/default.rules")" = "codex-rule-v1" ] ||
+    fail "explicitly selected Codex command rules were not restored"
 
 # Space/uncheck behavior is represented by fzf returning only the checked row.
 # The command must not touch an unchecked group.

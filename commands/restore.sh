@@ -11,8 +11,9 @@ usage() {
     echo "Usage:"
     echo "  lazy restore [--repository <url>]"
     echo ""
-    echo "Fetch the linked backup and choose what to restore. All rows start checked;"
-    echo "use Space to check/uncheck, Enter to restore, or Esc to cancel."
+    echo "Fetch the linked backup and choose what to restore. Standard rows start"
+    echo "checked; security-sensitive Codex command rules start unchecked."
+    echo "Use Space to check/uncheck, Enter to restore, or Esc to cancel."
     echo ""
     echo "Options:"
     echo "  --repository <url>  Link this repository on a new machine"
@@ -107,9 +108,12 @@ cleanup() {
 trap cleanup EXIT
 
 CHOICES="$WORK_DIR/choices"
+SENSITIVE_CHOICES="$WORK_DIR/sensitive-choices"
 : > "$CHOICES"
+: > "$SENSITIVE_CHOICES"
 AVAILABLE_IDS=()
 AVAILABLE_PATHS=()
+HAS_SENSITIVE_CHOICES=0
 
 while IFS=$'\t' read -r item_id item_path item_label; do
     [ -n "$item_id" ] || continue
@@ -133,8 +137,23 @@ while IFS=$'\t' read -r item_id item_path item_label; do
     # This is a display label, not a shell path to expand.
     # shellcheck disable=SC2088
     printf -v display_path '~/%s' "$item_path"
-    printf '%s\t%-22s %s\n' "$item_id" "$display_path" "$item_label" >> "$CHOICES"
+    if [ "$item_id" = "codex-rules" ]; then
+        printf '%s\t%-22s %s [security-sensitive; unchecked]\n' \
+            "$item_id" "$display_path" "$item_label" >> "$SENSITIVE_CHOICES"
+        HAS_SENSITIVE_CHOICES=1
+    else
+        printf '%s\t%-22s %s\n' "$item_id" "$display_path" "$item_label" >> "$CHOICES"
+    fi
 done < "$MANIFEST"
+
+# Keep sensitive choices at the end so fzf can select the standard rows, move
+# to the sensitive row, deselect it, and return focus to the first row.
+if [ "$HAS_SENSITIVE_CHOICES" -eq 1 ]; then
+    cat "$SENSITIVE_CHOICES" >> "$CHOICES"
+    DEFAULT_SELECTION_BIND='load:select-all+last+deselect+first'
+else
+    DEFAULT_SELECTION_BIND='load:select-all'
+fi
 
 if [ "${#AVAILABLE_IDS[@]}" -eq 0 ]; then
     echo "Error: The backup manifest has no restorable items." >&2
@@ -142,7 +161,9 @@ if [ "${#AVAILABLE_IDS[@]}" -eq 0 ]; then
 fi
 
 # The start event can fire before streamed input has reached fzf, leaving no
-# rows selected. Wait for the input load event before selecting them.
+# rows selected. Wait for the input load event before selecting the standard
+# rows; Codex command rules remain unchecked because restoring an allow rule
+# can let a command run outside the sandbox without another prompt.
 SELECTED_OUTPUT=$(fzf \
     --multi \
     --height=80% \
@@ -150,11 +171,11 @@ SELECTED_OUTPUT=$(fzf \
     --border \
     --delimiter=$'\t' \
     --with-nth=2.. \
-    --bind='load:select-all' \
+    --bind="$DEFAULT_SELECTION_BIND" \
     --bind='space:toggle+down' \
     --marker='x' \
     --prompt='Restore > ' \
-    --header=$'All items are checked by default\nSPACE = check/uncheck | ENTER = restore | ESC = cancel' \
+    --header=$'Standard items are checked; Codex command rules are unchecked\nSPACE = check/uncheck | ENTER = restore | ESC = cancel' \
     < "$CHOICES")
 FZF_STATUS=$?
 

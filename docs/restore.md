@@ -15,9 +15,12 @@ lazy restore --repository git@github.com:you/private-machine-backup.git
 
 The command fetches the newest backup, automatically detects whether it uses
 the folder or archive format, and opens an `fzf` checkbox-style picker.
-All available agent-file groups are checked initially. Use the arrow keys to move,
-`Space` to check or uncheck the highlighted group, `Enter` to perform the
-restore, or `Esc` to cancel without changing files.
+All standard agent-file groups are checked initially. Codex command rules are
+shown but remain unchecked because an `allow` rule can let a command run outside
+the sandbox without another prompt. Review that row and check it explicitly if
+you want to restore those rules. Use the arrow keys to move, `Space` to check or
+uncheck the highlighted group, `Enter` to perform the restore, or `Esc` to
+cancel without changing files.
 
 Only checked groups are replaced. Credentials, histories, sessions, plugins,
 general settings, Git config, and shell startup files are not restore targets.
