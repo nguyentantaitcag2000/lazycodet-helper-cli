@@ -32,7 +32,7 @@ COMMAND="$1"
 # never leaves the descriptions ragged.
 COMMANDS=(
     "agent.sync|linux,wsl,git-bash,macos|lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
-    "backup|linux,wsl,git-bash,macos|lazy backup [--repository <url>]|Back up Claude and Codex instructions, skills, rules, and custom agents"
+    "backup|linux,wsl,git-bash,macos|lazy backup [--repository <url>] [--format folder|archive]|Back up Claude and Codex instructions, skills, rules, and custom agents"
     "branch|linux,wsl,git-bash,macos|lazy branch [--color[=<when>]]|List local branches with their descriptions, in color"
     "branch.description|linux,wsl,git-bash,macos|lazy branch.description [branch] [options]|Show a branch description, then edit, set, or clear it (menu requires fzf)"
     "branch.history|linux,wsl,git-bash,macos|lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"

@@ -13,17 +13,17 @@ the command:
 lazy restore --repository git@github.com:you/private-machine-backup.git
 ```
 
-The command fetches the newest backup and opens an `fzf` checkbox-style picker.
+The command fetches the newest backup, automatically detects whether it uses
+the folder or archive format, and opens an `fzf` checkbox-style picker.
 All available agent-file groups are checked initially. Use the arrow keys to move,
 `Space` to check or uncheck the highlighted group, `Enter` to perform the
 restore, or `Esc` to cancel without changing files.
 
 Only checked groups are replaced. Credentials, histories, sessions, plugins,
 general settings, Git config, and shell startup files are not restore targets.
-Archives and manifest paths are validated and
-fully extracted to a temporary directory before anything in the home directory
-is changed. Immediately before replacement, current copies of checked paths are
-archived under:
+Stored items and manifest paths are validated and fully staged in a temporary
+directory before anything in the home directory is changed. Immediately before
+replacement, current copies of checked paths are archived under:
 
 ```text
 ~/.local/share/lazy/restore-backups/<timestamp>/

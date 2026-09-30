@@ -1,5 +1,5 @@
 #!/bin/bash
-# Restore selected global configuration archives from the linked backup repo.
+# Restore selected global configuration from the linked backup repo.
 
 set -u
 
@@ -51,6 +51,17 @@ MANIFEST="$BACKUP_REPO_DIR/items/manifest.tsv"
 if [ ! -s "$MANIFEST" ]; then
     echo "Error: The linked repository does not contain a lazy backup." >&2
     exit 1
+fi
+
+FORMAT_FILE="$BACKUP_REPO_DIR/items/format"
+BACKUP_FORMAT="archive"
+if [ -f "$FORMAT_FILE" ] && [ ! -L "$FORMAT_FILE" ]; then
+    IFS= read -r stored_format < "$FORMAT_FILE" || true
+    case "$stored_format" in
+        folder-v1) BACKUP_FORMAT="folder" ;;
+        archive-v1) BACKUP_FORMAT="archive" ;;
+        *) echo "Error: Unsupported lazy backup format: $stored_format" >&2; exit 1 ;;
+    esac
 fi
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lazy-restore.XXXXXX" 2>/dev/null)"
@@ -107,8 +118,16 @@ while IFS=$'\t' read -r item_id item_path item_label; do
         echo "Error: Backup manifest contains an unknown item: $item_id" >&2
         exit 1
     fi
-    archive="$BACKUP_REPO_DIR/items/$item_id.tar"
-    backup_validate_archive "$archive" "$item_path" || exit 1
+    if [ "$BACKUP_FORMAT" = "archive" ]; then
+        archive="$BACKUP_REPO_DIR/items/$item_id.tar"
+        backup_validate_archive "$archive" "$item_path" || exit 1
+    else
+        folder_item="$BACKUP_REPO_DIR/items/files/$item_path"
+        if [ ! -e "$folder_item" ] && [ ! -L "$folder_item" ]; then
+            echo "Error: Folder backup item is missing: $item_path" >&2
+            exit 1
+        fi
+    fi
     AVAILABLE_IDS+=("$item_id")
     AVAILABLE_PATHS+=("$item_path")
     # This is a display label, not a shell path to expand.
@@ -172,7 +191,17 @@ done <<< "$SELECTED_OUTPUT"
 # Validate and extract everything before the first home-directory change.
 mkdir -p "$WORK_DIR/staged"
 for ((index = 0; index < ${#SELECTED_IDS[@]}; index++)); do
-    tar -xf "$BACKUP_REPO_DIR/items/${SELECTED_IDS[$index]}.tar" -C "$WORK_DIR/staged" || exit 1
+    if [ "$BACKUP_FORMAT" = "archive" ]; then
+        staged_archive="$BACKUP_REPO_DIR/items/${SELECTED_IDS[$index]}.tar"
+    else
+        staged_archive="$WORK_DIR/${SELECTED_IDS[$index]}.tar"
+        if ! tar -cf "$staged_archive" -C "$BACKUP_REPO_DIR/items/files" "${SELECTED_PATHS[$index]}"; then
+            echo "Error: Could not stage folder backup item: ${SELECTED_PATHS[$index]}" >&2
+            exit 1
+        fi
+        backup_validate_archive "$staged_archive" "${SELECTED_PATHS[$index]}" || exit 1
+    fi
+    tar -xf "$staged_archive" -C "$WORK_DIR/staged" || exit 1
     staged_path="$WORK_DIR/staged/${SELECTED_PATHS[$index]}"
     if [ ! -e "$staged_path" ] && [ ! -L "$staged_path" ]; then
         echo "Error: Archive did not extract ${SELECTED_PATHS[$index]}." >&2

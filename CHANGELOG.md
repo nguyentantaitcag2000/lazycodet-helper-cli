@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-10-01]
+
+### Added
+
+- `lazy backup` now stores ordinary reviewable files by default, allowing
+  GitHub to show line-by-line changes. `--format archive` retains the original
+  tar-based snapshot when full permissions, empty directories, or nested Git
+  metadata must survive; `--format folder` switches back. Each run replaces the
+  previous representation, and `lazy restore` detects both formats as well as
+  legacy archive backups automatically.
+
 ## [2026-09-30]
 
 ### Added

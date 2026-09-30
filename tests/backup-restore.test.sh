@@ -89,8 +89,8 @@ run_source() {
         bash "$CLI" "$@"
 }
 
-# First use links an existing (possibly empty) remote and snapshots only the
-# Claude/Codex agent allowlist. Even nested skill metadata is preserved.
+# The default folder format links an existing (possibly empty) remote and
+# snapshots only the Claude/Codex allowlist as reviewable files.
 run_source backup --repository "$REMOTE" > "$TEST_ROOT/backup-first.out"
 [ -f "$SOURCE_CONFIG/backup-repository" ] || fail "repository link was not saved"
 [ "$(cat "$SOURCE_CONFIG/backup-repository")" = "$REMOTE" ] || fail "saved repository link is wrong"
@@ -105,10 +105,16 @@ assert_file_lacks "$SOURCE_REPO/items/manifest.tsv" '.credentials.json'
 assert_file_lacks "$SOURCE_REPO/items/manifest.tsv" 'sessions'
 assert_file_lacks "$SOURCE_REPO/items/manifest.tsv" 'plugins'
 assert_file_lacks "$SOURCE_REPO/items/manifest.tsv" '.gitconfig'
+[ "$(cat "$SOURCE_REPO/items/format")" = "folder-v1" ] || fail "folder format was not recorded"
+[ "$(cat "$SOURCE_REPO/items/files/.claude/CLAUDE.md")" = "claude-v1" ] ||
+    fail "Claude instructions were not stored as a reviewable file"
+[ "$(cat "$SOURCE_REPO/items/files/.agents/skills/demo/SKILL.md")" = "codex-skill-v1" ] ||
+    fail "Codex skill was not stored as a reviewable file"
 [ ! -e "$SOURCE_REPO/items/claude-home.tar" ] || fail "broad Claude home archive was created"
 [ ! -e "$SOURCE_REPO/items/codex-home.tar" ] || fail "broad Codex home archive was created"
-tar -tf "$SOURCE_REPO/items/claude-skills.tar" | grep -qF '.claude/skills/demo/.git/config' ||
-    fail "nested skill metadata was not archived"
+[ ! -e "$SOURCE_REPO/items/claude-skills.tar" ] || fail "default backup created tar archives"
+[ ! -e "$SOURCE_REPO/items/files/.claude/skills/demo/.git" ] ||
+    fail "folder backup retained nested Git metadata"
 git --git-dir="$REMOTE" rev-parse --verify HEAD >/dev/null || fail "first backup was not pushed"
 
 # Once linked, no repository prompt is needed. Changed snapshots create and
@@ -123,6 +129,28 @@ run_source backup > "$TEST_ROOT/backup-unchanged.out"
 [ "$(git --git-dir="$REMOTE" rev-parse HEAD)" = "$SECOND_HEAD" ] ||
     fail "unchanged backup created a commit"
 assert_file_has "$TEST_ROOT/backup-unchanged.out" "already up to date"
+
+# The archive format preserves metadata that cannot live inside the outer Git
+# repository. Switching formats replaces the snapshot cleanly, and switching
+# back restores the reviewable folder layout.
+FOLDER_HEAD="$(git --git-dir="$REMOTE" rev-parse HEAD)"
+run_source backup --format archive > "$TEST_ROOT/backup-archive.out"
+[ "$(cat "$SOURCE_REPO/items/format")" = "archive-v1" ] || fail "archive format was not recorded"
+[ ! -e "$SOURCE_REPO/items/files" ] || fail "folder snapshot survived archive switch"
+tar -tf "$SOURCE_REPO/items/claude-skills.tar" | grep -qF '.claude/skills/demo/.git/config' ||
+    fail "archive format did not preserve nested skill metadata"
+[ "$(git --git-dir="$REMOTE" rev-parse HEAD)" != "$FOLDER_HEAD" ] ||
+    fail "switching to archive format did not create a commit"
+
+run_source backup --format=folder > "$TEST_ROOT/backup-folder-again.out"
+[ "$(cat "$SOURCE_REPO/items/format")" = "folder-v1" ] || fail "folder format was not restored"
+[ -f "$SOURCE_REPO/items/files/.codex/AGENTS.md" ] || fail "folder snapshot was not recreated"
+[ ! -e "$SOURCE_REPO/items/codex-instructions.tar" ] || fail "archive survived folder switch"
+
+if run_source backup --format invalid > "$TEST_ROOT/backup-invalid.out" 2>&1; then
+    fail "unsupported backup format was accepted"
+fi
+assert_file_has "$TEST_ROOT/backup-invalid.out" "Unsupported backup format"
 
 # Restore on a new machine: fzf receives checkbox behavior, defaults all rows to
 # selected, and the command replaces each selected item only after fzf returns.
@@ -152,6 +180,10 @@ run_restore() {
 run_restore restore --repository "$REMOTE" > "$TEST_ROOT/restore-all.out"
 [ "$(cat "$RESTORE_HOME/.claude/CLAUDE.md")" = "claude-v2" ] || fail "Claude instructions were not restored"
 [ "$(cat "$RESTORE_HOME/.codex/AGENTS.md")" = "codex-v2" ] || fail "Codex instructions were not restored"
+[ "$(cat "$RESTORE_HOME/.claude/skills/demo/SKILL.md")" = "claude-skill-v1" ] ||
+    fail "Claude skill was not restored from folder format"
+[ ! -e "$RESTORE_HOME/.claude/skills/demo/.git" ] ||
+    fail "folder restore unexpectedly created nested Git metadata"
 [ "$(cat "$RESTORE_HOME/.claude/.credentials.json")" = "keep-claude-token" ] || fail "Claude credentials were changed"
 [ "$(cat "$RESTORE_HOME/.claude/projects/demo/history.json")" = "keep-claude-chat" ] || fail "Claude history was changed"
 [ "$(cat "$RESTORE_HOME/.codex/auth.json")" = "keep-codex-token" ] || fail "Codex credentials were changed"
@@ -183,6 +215,15 @@ assert_file_has "$TEST_ROOT/restore-cancel.out" "Cancelled."
 LAZY_TEST_FZF_MODE=empty run_restore restore > "$TEST_ROOT/restore-empty.out"
 [ "$(cat "$RESTORE_HOME/.claude/CLAUDE.md")" = "cancelled-value" ] ||
     fail "empty Enter selection changed files"
+
+# Restore auto-detects archive snapshots too, so changing backup formats does
+# not require a matching restore option.
+run_source backup --format archive > "$TEST_ROOT/backup-archive-restore.out"
+printf 'local-codex-before-archive-restore\n' > "$RESTORE_HOME/.codex/AGENTS.md"
+LAZY_TEST_FZF_MODE=match LAZY_TEST_FZF_MATCH="$(printf 'codex-instructions\t')" \
+    run_restore restore > "$TEST_ROOT/restore-archive.out"
+[ "$(cat "$RESTORE_HOME/.codex/AGENTS.md")" = "codex-v2" ] ||
+    fail "Codex instructions were not restored from archive format"
 
 # A first run without --repository obtains the address from stdin and retains it.
 PROMPT_HOME="$TEST_ROOT/prompt-home"

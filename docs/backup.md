@@ -1,11 +1,24 @@
 # `lazy backup`
 
-Archive the allowlisted Claude Code and Codex agent files, commit them, and push
+Save the allowlisted Claude Code and Codex agent files, commit them, and push
 them to a Git repository:
 
 ```bash
 lazy backup
 ```
+
+The default `folder` format stores ordinary files so changes can be reviewed
+line by line on GitHub. To preserve full filesystem metadata and nested Git
+metadata instead, select the original archive format:
+
+```bash
+lazy backup --format archive
+```
+
+Pass `--format folder` to switch an archive snapshot back to folders. The
+selected format applies to that run; running `lazy backup` without the option
+always uses `folder`. Switching replaces the previous snapshot in the next Git
+commit rather than keeping two copies.
 
 On the first run, enter the clone URL of an existing, dedicated repository. The
 repository may be empty. The link and a local checkout are retained, so later
@@ -22,8 +35,7 @@ sensitive text and a skill may include executable scripts.
 
 ## What is backed up
 
-Only entries that exist are included. Each entry is stored as a separate tar
-archive so permissions, symlinks, and nested Git directories survive.
+Only entries that exist are included. Both formats use the same allowlist.
 
 | Home path | Contents |
 |---|---|
@@ -34,6 +46,17 @@ archive so permissions, symlinks, and nested Git directories survive.
 | `~/.codex/AGENTS.md`, `~/.codex/AGENTS.override.md` | Codex global instructions |
 | `~/.agents/skills` | Codex skills |
 | `~/.codex/rules` | Codex command rules |
+
+### Storage formats
+
+| Format | Git repository layout | Tradeoff |
+|---|---|---|
+| `folder` (default) | Ordinary files below `items/files/` | GitHub can show line-by-line diffs. Symlinks and executable bits are retained, but empty directories, full POSIX permissions, and nested `.git` metadata are not. Groups containing no files after those omissions are skipped. |
+| `archive` | One `items/<group>.tar` per detected group | Preserves permissions, symlinks, empty directories, and nested `.git` metadata, but GitHub treats changes as binary. |
+
+The `items/format` marker records the representation. `lazy restore` reads it
+automatically, so restore does not need a matching format option. Backups made
+before this marker existed are treated as archive snapshots.
 
 This is an explicit allowlist. In particular, it excludes `~/.ssh`, Claude and
 Codex credentials, account stores, conversations, sessions, project history,

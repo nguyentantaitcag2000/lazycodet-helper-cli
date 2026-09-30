@@ -10,9 +10,9 @@ source "${SCRIPT_DIR}/../lib/backup-common.sh"
 
 usage() {
     echo "Usage:"
-    echo "  lazy backup [--repository <url>]"
+    echo "  lazy backup [--repository <url>] [--format folder|archive]"
     echo ""
-    echo "Archive detected Claude and Codex instructions, skills, rules, and custom"
+    echo "Snapshot detected Claude and Codex instructions, skills, rules, and custom"
     echo "agents, then push them to the linked Git repository. The first"
     echo "run asks for the repository address; later runs reuse that link."
     echo ""
@@ -21,6 +21,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --repository <url>  Link this repository on the first run"
+    echo "  --format <format>   Store reviewable folders (default) or tar archives"
     echo "  -h, --help          Show this help"
     echo ""
     echo "To change repository, remove both paths and run backup again:"
@@ -29,6 +30,7 @@ usage() {
 }
 
 REQUESTED_REPOSITORY=""
+BACKUP_FORMAT="folder"
 while [ $# -gt 0 ]; do
     case "$1" in
         --repository|--repo)
@@ -39,11 +41,25 @@ while [ $# -gt 0 ]; do
             fi
             REQUESTED_REPOSITORY="$1"
             ;;
+        --format)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --format needs folder or archive." >&2
+                exit 1
+            fi
+            BACKUP_FORMAT="$1"
+            ;;
+        --format=*) BACKUP_FORMAT="${1#*=}" ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Error: Unexpected argument -> $1" >&2; echo ""; usage; exit 1 ;;
     esac
     shift
 done
+
+case "$BACKUP_FORMAT" in
+    folder|archive) ;;
+    *) echo "Error: Unsupported backup format: $BACKUP_FORMAT" >&2; exit 1 ;;
+esac
 
 backup_common_init
 backup_require_tools || exit 1
@@ -67,7 +83,12 @@ trap cleanup EXIT
 mkdir -p "$BUILD_DIR/items"
 MANIFEST="$BUILD_DIR/items/manifest.tsv"
 : > "$MANIFEST"
+printf '%s-v1\n' "$BACKUP_FORMAT" > "$BUILD_DIR/items/format"
 ITEM_COUNT=0
+
+if [ "$BACKUP_FORMAT" = "folder" ]; then
+    mkdir -p "$BUILD_DIR/items/files"
+fi
 
 while IFS=$'\t' read -r item_id item_path item_label; do
     source_path="$HOME/$item_path"
@@ -75,10 +96,34 @@ while IFS=$'\t' read -r item_id item_path item_label; do
         continue
     fi
 
-    printf '  Archiving %s\n' "$item_path"
-    if ! tar -cf "$BUILD_DIR/items/$item_id.tar" -C "$HOME" "$item_path"; then
-        echo "Error: Could not archive $source_path" >&2
-        exit 1
+    if [ "$BACKUP_FORMAT" = "archive" ]; then
+        printf '  Archiving %s\n' "$item_path"
+        if ! tar -cf "$BUILD_DIR/items/$item_id.tar" -C "$HOME" "$item_path"; then
+            echo "Error: Could not archive $source_path" >&2
+            exit 1
+        fi
+    else
+        printf '  Copying %s\n' "$item_path"
+        item_archive="$BUILD_DIR/$item_id.tar"
+        if ! tar -cf "$item_archive" -C "$HOME" "$item_path" ||
+           ! tar -xf "$item_archive" -C "$BUILD_DIR/items/files"; then
+            echo "Error: Could not copy $source_path" >&2
+            exit 1
+        fi
+
+        # A nested .git entry cannot be represented as ordinary files inside
+        # the backup repository: Git treats its parent as an embedded repo and
+        # silently omits the metadata. The archive format remains available
+        # when preserving nested repository metadata is important.
+        folder_item="$BUILD_DIR/items/files/$item_path"
+        if [ -d "$folder_item" ] && [ ! -L "$folder_item" ]; then
+            find "$folder_item" -depth -name .git -exec rm -rf -- {} \;
+            if ! find "$folder_item" \( -type f -o -type l \) -print -quit | grep -q .; then
+                rm -rf -- "$folder_item"
+                printf '  Skipping %s (no files remain in folder format)\n' "$item_path"
+                continue
+            fi
+        fi
     fi
     printf '%s\t%s\t%s\n' "$item_id" "$item_path" "$item_label" >> "$MANIFEST"
     ITEM_COUNT=$((ITEM_COUNT + 1))
@@ -109,9 +154,11 @@ fi
 
 # Archives are binary even when their payload happens to look like text. Keep
 # the manifest at LF on every platform so Git Bash cannot rewrite either form.
-printf 'items/*.tar -text\nitems/manifest.tsv text eol=lf\n' > "$BACKUP_REPO_DIR/.gitattributes"
+printf 'items/*.tar -text\nitems/manifest.tsv text eol=lf\nitems/format text eol=lf\n' > "$BACKUP_REPO_DIR/.gitattributes"
 
-git -C "$BACKUP_REPO_DIR" add -A -- .gitattributes items || exit 1
+# The linked repository may contain broad ignore rules. The allowlisted
+# snapshot is authoritative, so do not let those rules silently omit files.
+git -C "$BACKUP_REPO_DIR" add -A -f -- .gitattributes items || exit 1
 
 push_backup() {
     if git -C "$BACKUP_REPO_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
