@@ -20,6 +20,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- `lazy restore` now checks every available item only after `fzf` has loaded
+  its input. On newer `fzf` versions, the previous startup binding could run
+  before any rows existed, so pressing Enter restored only the focused first
+  item even though the picker said that all items were checked by default.
 - Every script had been committed with CRLF line endings, so on Linux, WSL, and
   macOS each `lazy` command, including `lazy update`, failed with
   `/bin/bash^M: bad interpreter`. All files are stored with LF again, and a

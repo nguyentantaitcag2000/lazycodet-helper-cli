@@ -122,6 +122,8 @@ if [ "${#AVAILABLE_IDS[@]}" -eq 0 ]; then
     exit 1
 fi
 
+# The start event can fire before streamed input has reached fzf, leaving no
+# rows selected. Wait for the input load event before selecting them.
 SELECTED_OUTPUT=$(fzf \
     --multi \
     --height=80% \
@@ -129,7 +131,7 @@ SELECTED_OUTPUT=$(fzf \
     --border \
     --delimiter=$'\t' \
     --with-nth=2.. \
-    --bind='start:select-all' \
+    --bind='load:select-all' \
     --bind='space:toggle+down' \
     --marker='x' \
     --prompt='Restore > ' \
