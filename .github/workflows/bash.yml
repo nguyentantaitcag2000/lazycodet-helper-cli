@@ -14,6 +14,13 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
+      - name: Reject CRLF line endings
+        run: |
+          if git ls-files --eol | grep "i/crlf"; then
+            echo "These files are stored with CRLF; Bash cannot run them on Linux or macOS." >&2
+            exit 1
+          fi
+
       - name: Check bash syntax
         run: |
           find . -name "*.sh" -exec bash -n {} \;

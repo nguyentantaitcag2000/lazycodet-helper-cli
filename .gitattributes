@@ -1,0 +1,4 @@
+# Keep LF on every platform, including a Windows checkout. Bash on Linux, WSL,
+# and macOS rejects CRLF scripts ("/bin/bash^M: bad interpreter"), and a
+# Windows checkout committed from WSL would otherwise store CRLF in the repo.
+* text=auto eol=lf

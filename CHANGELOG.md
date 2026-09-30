@@ -18,6 +18,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   (with confirmation), or choose another branch. `--edit`, `--set <text>`,
   `--clear`, and `--print` do the same without the menu and without `fzf`.
 
+### Fixed
+
+- Every script had been committed with CRLF line endings, so on Linux, WSL, and
+  macOS each `lazy` command, including `lazy update`, failed with
+  `/bin/bash^M: bad interpreter`. All files are stored with LF again, and a
+  `.gitattributes` rule (`* text=auto eol=lf`) keeps them LF even when a Windows
+  checkout is committed from WSL. CI now rejects files stored with CRLF.
+
 ## [2026-09-29]
 
 ### Added
