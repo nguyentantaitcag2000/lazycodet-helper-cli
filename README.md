@@ -9,6 +9,8 @@ macOS, and Git Bash (Windows).
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | [`lazy agent.sync`](docs/agent.sync.md)                         | Link Codex agent config to the Claude-owned source files in any Git project                                              |
 | [`lazy backup`](docs/backup.md)                                 | Back up Claude and Codex instructions, skills, rules, and custom agents                                                  |
+| [`lazy branch`](docs/branch.md)                                 | List local branches with their descriptions, names and descriptions in different colors                                  |
+| [`lazy branch.description`](docs/branch.description.md)         | Show a branch's description, then edit, set, or clear it from a menu                                                     |
 | [`lazy branch.history`](docs/branch.history.md)                 | Pick a recently checked-out branch and switch to it                                                                      |
 | [`lazy caffeinate`](docs/caffeinate.md)                         | List and stop the `caffeinate` processes keeping a Mac awake                                                             |
 | [`lazy claude`](docs/claude.md)                                 | Pick, add, switch, export, or import saved Claude Code accounts                                                          |
@@ -52,5 +54,5 @@ On Git Bash, reload the shell once after installing:
 source ~/.bashrc
 ```
 
-`lazy branch.history`, `lazy git.commit`, and `lazy restore` also need [fzf](https://github.com/junegunn/fzf)
+The `lazy branch.description` menu, `lazy branch.history`, `lazy git.commit`, and `lazy restore` also need [fzf](https://github.com/junegunn/fzf)
 (`sudo apt install fzf`, `brew install fzf` on macOS, or `scoop install fzf` on Windows).

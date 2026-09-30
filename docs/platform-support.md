@@ -15,6 +15,8 @@ Status meanings:
 | ------------------------ | ----------------- | -------------------------------------------- | ----------------- | ---------------------------------------- |
 | `agent.sync`             | Supported         | Supported                                    | Supported         | Supported¹                               |
 | `backup`                 | Supported         | Supported                                    | Supported         | Supported                                |
+| `branch`                 | Supported         | Supported                                    | Supported         | Supported                                |
+| `branch.description`     | Supported         | Supported                                    | Supported         | Supported                                |
 | `branch.history`         | Supported         | Supported                                    | Supported         | Supported                                |
 | `caffeinate`             | Excluded²         | Excluded²                                    | Supported         | Excluded²                                |
 | `claude`                 | Supported         | Supported                                    | Supported⁵        | Supported                                |

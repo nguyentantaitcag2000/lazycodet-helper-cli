@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-09-30]
+
+### Added
+
+- `lazy branch`: lists local branches with their `git branch --edit-description`
+  descriptions. The current branch is marked and green, other names cyan, and
+  descriptions yellow, with multi-line descriptions aligned under the first
+  line. All descriptions come from one `git config --get-regexp` call.
+  `--color=auto|always|never`; piped output is plain.
+- `lazy branch.description [branch]`: shows a branch's description and opens an
+  `fzf` menu to edit it in the Git editor, type a one-line description, clear it
+  (with confirmation), or choose another branch. `--edit`, `--set <text>`,
+  `--clear`, and `--print` do the same without the menu and without `fzf`.
+
 ## [2026-09-29]
 
 ### Added

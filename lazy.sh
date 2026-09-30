@@ -33,6 +33,8 @@ COMMAND="$1"
 COMMANDS=(
     "agent.sync|linux,wsl,git-bash,macos|lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
     "backup|linux,wsl,git-bash,macos|lazy backup [--repository <url>]|Back up Claude and Codex instructions, skills, rules, and custom agents"
+    "branch|linux,wsl,git-bash,macos|lazy branch [--color[=<when>]]|List local branches with their descriptions, in color"
+    "branch.description|linux,wsl,git-bash,macos|lazy branch.description [branch] [options]|Show a branch description, then edit, set, or clear it (menu requires fzf)"
     "branch.history|linux,wsl,git-bash,macos|lazy branch.history|Pick a recently checked-out branch and switch to it (requires fzf)"
     "caffeinate|macos|lazy caffeinate [--list] [--kill-all]|List and stop the caffeinate processes keeping this Mac awake"
     "claude|linux,wsl,git-bash,macos|lazy claude [name] [--add|--export|--import]|Pick, switch, add, export, or import saved Claude Code accounts"
