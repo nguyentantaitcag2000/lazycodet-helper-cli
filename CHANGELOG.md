@@ -8,6 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `lazy gpg [encrypted-file]` decrypts a GPG file beside its encrypted source.
+  With no argument it asks for the path, then leaves passphrase entry to
+  GnuPG's secure pinentry. Known encryption suffixes are removed, unknown ones
+  receive `.decrypted`, existing outputs are never overwritten, and failed or
+  cancelled decryptions leave no partial plaintext behind.
+
 - `lazy backup --relink <url>` and `lazy restore --relink <url>` replace the
   linked backup repository address, for example to switch from an HTTPS
   address that authenticates as the wrong GitHub account to the SSH address.

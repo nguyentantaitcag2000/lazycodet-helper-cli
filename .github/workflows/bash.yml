@@ -38,6 +38,9 @@ jobs:
       - name: Test claude
         run: bash tests/claude.test.sh
 
+      - name: Test gpg
+        run: bash tests/gpg.test.sh
+
       - name: Test backup and restore
         run: bash tests/backup-restore.test.sh
 

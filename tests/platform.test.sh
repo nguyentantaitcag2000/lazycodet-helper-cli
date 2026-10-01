@@ -57,6 +57,7 @@ CURRENT_USAGE="$(usage_output)"
 assert_has "$CURRENT_USAGE" "lazy agent.sync"
 assert_has "$CURRENT_USAGE" "lazy backup"
 assert_has "$CURRENT_USAGE" "lazy git.commit"
+assert_has "$CURRENT_USAGE" "lazy gpg"
 assert_has "$CURRENT_USAGE" "lazy kill <port>"
 assert_has "$CURRENT_USAGE" "lazy restore"
 
@@ -78,6 +79,7 @@ GIT_BASH_USAGE="$(MSYSTEM=MINGW64 bash "$CLI" 2>&1 || true)"
 assert_has "$GIT_BASH_USAGE" "lazy claude.auth"
 assert_has "$GIT_BASH_USAGE" "lazy fix.font"
 assert_has "$GIT_BASH_USAGE" "lazy git.commit"
+assert_has "$GIT_BASH_USAGE" "lazy gpg"
 
 # Exercise both Unix registry views even when this test itself runs on only one
 # of them. Git Bash has a readonly msys OSTYPE, so it validates its real branch
@@ -88,6 +90,7 @@ if [ "$CURRENT_PLATFORM" != "git-bash" ]; then
         assert_has "$SIMULATED_USAGE" "lazy agent.sync"
         assert_has "$SIMULATED_USAGE" "lazy backup"
         assert_has "$SIMULATED_USAGE" "lazy git.commit"
+        assert_has "$SIMULATED_USAGE" "lazy gpg"
         assert_has "$SIMULATED_USAGE" "lazy restore"
         assert_lacks "$SIMULATED_USAGE" "lazy claude.auth"
         assert_lacks "$SIMULATED_USAGE" "lazy fix.font"
