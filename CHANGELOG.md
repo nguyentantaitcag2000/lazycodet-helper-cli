@@ -12,7 +12,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   With no argument it asks for the path, then leaves passphrase entry to
   GnuPG's secure pinentry. Known encryption suffixes are removed, unknown ones
   receive `.decrypted`, existing outputs are never overwritten, and failed or
-  cancelled decryptions leave no partial plaintext behind.
+  cancelled decryptions leave no partial plaintext behind. When the decrypted
+  file is a ZIP, it can now optionally extract it into a sibling directory;
+  password entry is handled securely by `unzip`, and failed extraction leaves
+  no partial directory behind.
 
 - `lazy backup --relink <url>` and `lazy restore --relink <url>` replace the
   linked backup repository address, for example to switch from an HTTPS

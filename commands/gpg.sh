@@ -8,7 +8,8 @@ usage() {
     echo ""
     echo "Decrypt a GPG file next to the encrypted file. When no file is given,"
     echo "the command asks for its path. GnuPG securely prompts for a passphrase"
-    echo "when the key or encrypted file requires one."
+    echo "when the key or encrypted file requires one. If the result is a ZIP,"
+    echo "the command can also extract it and let unzip request its password."
     echo ""
     echo "Output names:"
     echo "  report.pdf.gpg  -> report.pdf"
@@ -134,11 +135,18 @@ TEMP_DIR="$(mktemp -d "${INPUT_DIR}/.lazy-gpg.XXXXXX")" || {
 }
 umask "$OLD_UMASK"
 TEMP_FILE="${TEMP_DIR}/output"
+EXTRACT_TEMP_DIR=""
 
 cleanup() {
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then
         rm -f "$TEMP_FILE"
         rmdir "$TEMP_DIR" 2>/dev/null || true
+    fi
+
+    if [ -n "${EXTRACT_TEMP_DIR:-}" ] && [ -d "$EXTRACT_TEMP_DIR" ]; then
+        case "$EXTRACT_TEMP_DIR" in
+            "${INPUT_DIR}/.lazy-unzip."*) rm -rf "$EXTRACT_TEMP_DIR" ;;
+        esac
     fi
 }
 trap cleanup EXIT
@@ -182,3 +190,109 @@ TEMP_DIR=""
 
 echo "Decrypted successfully:"
 echo "  $OUTPUT_PATH"
+
+is_zip_file() {
+    local magic
+
+    case "$OUTPUT_NAME" in
+        *.[zZ][iI][pP]) return 0 ;;
+    esac
+
+    # Also recognize ZIP data whose embedded/original name did not end in .zip.
+    # These are the signatures for a normal, empty, or spanned ZIP archive.
+    if command -v od >/dev/null 2>&1 && command -v tr >/dev/null 2>&1; then
+        magic="$(od -An -N4 -tx1 "$OUTPUT_PATH" 2>/dev/null | tr -d '[:space:]')"
+        case "$magic" in
+            504b0304|504b0506|504b0708) return 0 ;;
+        esac
+    fi
+
+    return 1
+}
+
+ask_to_unzip() {
+    local answer
+
+    while true; do
+        printf 'The decrypted file is a ZIP. Unzip it now? [y/N]: '
+        if ! IFS= read -r answer; then
+            echo ""
+            echo "Skipped extraction."
+            return 1
+        fi
+
+        case "$answer" in
+            y|Y|yes|Yes|YES) return 0 ;;
+            ""|n|N|no|No|NO)
+                echo "Skipped extraction."
+                return 1
+                ;;
+            *) echo "Please answer y or n." ;;
+        esac
+    done
+}
+
+if ! is_zip_file || ! ask_to_unzip; then
+    exit 0
+fi
+
+if ! command -v unzip >/dev/null 2>&1; then
+    echo "Error: The decrypted file is a ZIP, but 'unzip' is not installed." >&2
+    echo "       The ZIP was kept at: $OUTPUT_PATH" >&2
+    exit 1
+fi
+
+case "$OUTPUT_NAME" in
+    *.[zZ][iI][pP]) EXTRACT_NAME="${OUTPUT_NAME%????}" ;;
+    *) EXTRACT_NAME="${OUTPUT_NAME}.unzipped" ;;
+esac
+
+if [ -z "$EXTRACT_NAME" ]; then
+    EXTRACT_NAME="${OUTPUT_NAME}.unzipped"
+fi
+
+EXTRACT_PATH="${INPUT_DIR}/${EXTRACT_NAME}"
+
+if [ -e "$EXTRACT_PATH" ] || [ -L "$EXTRACT_PATH" ]; then
+    echo "Error: Extraction destination already exists -> $EXTRACT_PATH" >&2
+    echo "       The ZIP was kept and nothing was overwritten." >&2
+    exit 1
+fi
+
+OLD_UMASK="$(umask)"
+umask 077
+EXTRACT_TEMP_DIR="$(mktemp -d "${INPUT_DIR}/.lazy-unzip.XXXXXX")" || {
+    umask "$OLD_UMASK"
+    echo "Error: Could not create a temporary extraction directory." >&2
+    echo "       The ZIP was kept at: $OUTPUT_PATH" >&2
+    exit 1
+}
+umask "$OLD_UMASK"
+EXTRACT_TEMP_PATH="${EXTRACT_TEMP_DIR}/content"
+mkdir "$EXTRACT_TEMP_PATH"
+
+echo "Extracting to: $EXTRACT_PATH"
+echo "If this ZIP is password-protected, unzip will ask for its password."
+
+if ! unzip -q "$OUTPUT_PATH" -d "$EXTRACT_TEMP_PATH"; then
+    echo "Error: ZIP extraction failed. No extracted directory was saved." >&2
+    echo "       The decrypted ZIP is still available at: $OUTPUT_PATH" >&2
+    exit 1
+fi
+
+if ! mv -n "$EXTRACT_TEMP_PATH" "$EXTRACT_PATH"; then
+    echo "Error: Could not save the extracted directory -> $EXTRACT_PATH" >&2
+    exit 1
+fi
+
+if [ -e "$EXTRACT_TEMP_PATH" ]; then
+    echo "Error: Extraction destination appeared while unzip was running." >&2
+    echo "       Nothing was overwritten; the ZIP was kept at: $OUTPUT_PATH" >&2
+    exit 1
+fi
+
+rmdir "$EXTRACT_TEMP_DIR"
+EXTRACT_TEMP_DIR=""
+
+echo "Unzipped successfully:"
+echo "  $EXTRACT_PATH"

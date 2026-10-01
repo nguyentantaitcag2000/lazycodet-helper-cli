@@ -27,6 +27,25 @@ The result is always stored beside the encrypted file:
 
 The suffix matching is case-insensitive. The encrypted source file is kept.
 
+## ZIP extraction
+
+When the decrypted result is a ZIP archive, the command asks whether to extract
+it:
+
+```text
+The decrypted file is a ZIP. Unzip it now? [y/N]: y
+Extracting to: /home/me/Documents/archive
+```
+
+Choosing `y` extracts `archive.zip` into a sibling `archive/` directory. For a
+ZIP without a `.zip` suffix, the directory receives an `.unzipped` suffix. The
+decrypted ZIP itself is kept. Choosing `n`, pressing Enter, or reaching end of
+input skips extraction.
+
+If the ZIP is password-protected, `unzip` asks for the password without `lazy`
+putting it in a command-line argument or storing it. An existing destination
+directory is never overwritten.
+
 ## Requirements
 
 The `gpg` command must be installed and available on `PATH`:
@@ -34,6 +53,10 @@ The `gpg` command must be installed and available on `PATH`:
 - Debian/Ubuntu/WSL: `sudo apt install gnupg`
 - macOS: `brew install gnupg`
 - Git Bash: install Gpg4win and make its `gpg` command available in Git Bash
+
+Optional ZIP extraction also requires `unzip`. It is available by default on
+macOS; install it with `sudo apt install unzip` on Debian/Ubuntu/WSL or
+`scoop install unzip` for Git Bash on Windows.
 
 ## Safety and failures
 
@@ -43,10 +66,14 @@ directory next to the destination, then moved into place only after GnuPG
 finishes successfully. A wrong passphrase, cancellation, or GnuPG error removes
 the temporary output.
 
+ZIP contents are also extracted into a private temporary directory first. A
+wrong ZIP password, cancellation, or extraction error removes that directory
+while retaining the successfully decrypted ZIP for retrying.
+
 The passphrase is handled by GnuPG and is never passed as a command-line
 argument or stored by `lazy`.
 
 ## Undo
 
-Delete the decrypted output file. The original `.gpg`, `.pgp`, or `.asc` file
-is unchanged.
+Delete the decrypted output file and, when created, its extracted sibling
+directory. The original `.gpg`, `.pgp`, or `.asc` file is unchanged.
