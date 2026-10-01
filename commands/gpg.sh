@@ -8,8 +8,8 @@ usage() {
     echo ""
     echo "Decrypt a GPG file next to the encrypted file. When no file is given,"
     echo "the command asks for its path. GnuPG securely prompts for a passphrase"
-    echo "when the key or encrypted file requires one. If the result is a ZIP,"
-    echo "the command can also extract it and let unzip request its password."
+    echo "when the key or encrypted file requires one. If the result is ZIP or"
+    echo "GZIP data, the command can also extract or decompress it."
     echo ""
     echo "Output names:"
     echo "  report.pdf.gpg  -> report.pdf"
@@ -136,6 +136,7 @@ TEMP_DIR="$(mktemp -d "${INPUT_DIR}/.lazy-gpg.XXXXXX")" || {
 umask "$OLD_UMASK"
 TEMP_FILE="${TEMP_DIR}/output"
 EXTRACT_TEMP_DIR=""
+GZIP_TEMP_DIR=""
 
 cleanup() {
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then
@@ -147,6 +148,11 @@ cleanup() {
         case "$EXTRACT_TEMP_DIR" in
             "${INPUT_DIR}/.lazy-unzip."*) rm -rf "$EXTRACT_TEMP_DIR" ;;
         esac
+    fi
+
+    if [ -n "${GZIP_TEMP_DIR:-}" ] && [ -d "$GZIP_TEMP_DIR" ]; then
+        rm -f "${GZIP_TEMP_FILE:-}"
+        rmdir "$GZIP_TEMP_DIR" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
@@ -232,7 +238,111 @@ ask_to_unzip() {
     done
 }
 
-if ! is_zip_file || ! ask_to_unzip; then
+is_gzip_file() {
+    local magic
+
+    case "$OUTPUT_NAME" in
+        *.[gG][zZ]) return 0 ;;
+    esac
+
+    # GZIP streams start with the fixed ID1/ID2 bytes 1f 8b.
+    if command -v od >/dev/null 2>&1 && command -v tr >/dev/null 2>&1; then
+        magic="$(od -An -N2 -tx1 "$OUTPUT_PATH" 2>/dev/null | tr -d '[:space:]')"
+        [ "$magic" = "1f8b" ] && return 0
+    fi
+
+    return 1
+}
+
+ask_to_decompress_gzip() {
+    local answer
+
+    while true; do
+        printf 'The decrypted file is GZIP data. Decompress it now? [y/N]: '
+        if ! IFS= read -r answer; then
+            echo ""
+            echo "Skipped decompression."
+            return 1
+        fi
+
+        case "$answer" in
+            y|Y|yes|Yes|YES) return 0 ;;
+            ""|n|N|no|No|NO)
+                echo "Skipped decompression."
+                return 1
+                ;;
+            *) echo "Please answer y or n." ;;
+        esac
+    done
+}
+
+if ! is_zip_file; then
+    if ! is_gzip_file || ! ask_to_decompress_gzip; then
+        exit 0
+    fi
+
+    if ! command -v gzip >/dev/null 2>&1; then
+        echo "Error: The decrypted file is GZIP data, but 'gzip' is not installed." >&2
+        echo "       The GZIP file was kept at: $OUTPUT_PATH" >&2
+        exit 1
+    fi
+
+    case "$OUTPUT_NAME" in
+        *.[gG][zZ]) DECOMPRESSED_NAME="${OUTPUT_NAME%???}" ;;
+        *) DECOMPRESSED_NAME="${OUTPUT_NAME}.decompressed" ;;
+    esac
+
+    if [ -z "$DECOMPRESSED_NAME" ]; then
+        DECOMPRESSED_NAME="${OUTPUT_NAME}.decompressed"
+    fi
+
+    DECOMPRESSED_PATH="${INPUT_DIR}/${DECOMPRESSED_NAME}"
+
+    if [ -e "$DECOMPRESSED_PATH" ] || [ -L "$DECOMPRESSED_PATH" ]; then
+        echo "Error: Decompressed output already exists -> $DECOMPRESSED_PATH" >&2
+        echo "       The GZIP file was kept and nothing was overwritten." >&2
+        exit 1
+    fi
+
+    OLD_UMASK="$(umask)"
+    umask 077
+    GZIP_TEMP_DIR="$(mktemp -d "${INPUT_DIR}/.lazy-gzip.XXXXXX")" || {
+        umask "$OLD_UMASK"
+        echo "Error: Could not create a temporary decompression directory." >&2
+        echo "       The GZIP file was kept at: $OUTPUT_PATH" >&2
+        exit 1
+    }
+    umask "$OLD_UMASK"
+    GZIP_TEMP_FILE="${GZIP_TEMP_DIR}/output"
+
+    echo "Decompressing to: $DECOMPRESSED_PATH"
+
+    if ! gzip -dc "$OUTPUT_PATH" > "$GZIP_TEMP_FILE"; then
+        echo "Error: GZIP decompression failed. No decompressed file was saved." >&2
+        echo "       The decrypted GZIP file is still available at: $OUTPUT_PATH" >&2
+        exit 1
+    fi
+
+    if ! mv -n "$GZIP_TEMP_FILE" "$DECOMPRESSED_PATH"; then
+        echo "Error: Could not save the decompressed file -> $DECOMPRESSED_PATH" >&2
+        exit 1
+    fi
+
+    if [ -e "$GZIP_TEMP_FILE" ]; then
+        echo "Error: Decompressed output appeared while gzip was running." >&2
+        echo "       Nothing was overwritten; the GZIP file was kept at: $OUTPUT_PATH" >&2
+        exit 1
+    fi
+
+    rmdir "$GZIP_TEMP_DIR"
+    GZIP_TEMP_DIR=""
+
+    echo "Decompressed successfully:"
+    echo "  $DECOMPRESSED_PATH"
+    exit 0
+fi
+
+if ! ask_to_unzip; then
     exit 0
 fi
 

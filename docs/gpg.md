@@ -46,6 +46,23 @@ If the ZIP is password-protected, `unzip` asks for the password without `lazy`
 putting it in a command-line argument or storing it. An existing destination
 directory is never overwritten.
 
+## GZIP decompression
+
+GZIP output is also detected by its `.gz` suffix or file signature:
+
+```text
+The decrypted file is GZIP data. Decompress it now? [y/N]: y
+Decompressing to: /home/me/Documents/database.sql
+```
+
+Choosing `y` decompresses `database.sql.gz` into the sibling file
+`database.sql`. An `archive.tar.gz` becomes `archive.tar`; this command does not
+automatically unpack that TAR archive. When GZIP data has no `.gz` suffix, the
+output receives a `.decompressed` suffix. The decrypted `.gz` file is kept.
+
+Unlike ZIP, the GZIP format has no password-protection feature, so there is no
+second password prompt for this step.
+
 ## Requirements
 
 The `gpg` command must be installed and available on `PATH`:
@@ -58,6 +75,9 @@ Optional ZIP extraction also requires `unzip`. It is available by default on
 macOS; install it with `sudo apt install unzip` on Debian/Ubuntu/WSL or
 `scoop install unzip` for Git Bash on Windows.
 
+GZIP decompression requires the `gzip` command, which is normally included on
+Linux, WSL, macOS, and Git Bash.
+
 ## Safety and failures
 
 An existing output file is never overwritten. Move or rename it before retrying.
@@ -69,6 +89,9 @@ the temporary output.
 ZIP contents are also extracted into a private temporary directory first. A
 wrong ZIP password, cancellation, or extraction error removes that directory
 while retaining the successfully decrypted ZIP for retrying.
+
+GZIP output follows the same rule: failed decompression removes its partial
+temporary file and retains the decrypted `.gz` file.
 
 The passphrase is handled by GnuPG and is never passed as a command-line
 argument or stored by `lazy`.

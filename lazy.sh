@@ -40,7 +40,7 @@ COMMANDS=(
     "claude|linux,wsl,git-bash,macos|lazy claude [name] [--add|--export|--import]|Pick, switch, add, export, or import saved Claude Code accounts"
     "claude.auth|git-bash|lazy claude.auth [distro]|Sync the Claude Code login between Windows and a WSL distro"
     "fix.font|git-bash|lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
-    "gpg|linux,wsl,git-bash,macos|lazy gpg [encrypted-file]|Decrypt a GPG file and optionally extract ZIP output"
+    "gpg|linux,wsl,git-bash,macos|lazy gpg [encrypted-file]|Decrypt a GPG file and optionally unpack ZIP or GZIP output"
     "git.commit|linux,wsl,git-bash,macos|lazy git.commit|Pick changed files and commit only those files (requires fzf)"
     "git.remember|linux,wsl,git-bash,macos|lazy git.remember [remote] [-f]|Store this repo's Git username/password so Git stops asking"
     "kill|linux,wsl,git-bash,macos|lazy kill <port> [-y]|Kill what holds <port> on the scopes available here"

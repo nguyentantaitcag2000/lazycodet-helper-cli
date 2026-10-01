@@ -13,9 +13,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   GnuPG's secure pinentry. Known encryption suffixes are removed, unknown ones
   receive `.decrypted`, existing outputs are never overwritten, and failed or
   cancelled decryptions leave no partial plaintext behind. When the decrypted
-  file is a ZIP, it can now optionally extract it into a sibling directory;
+  file is a ZIP, it can optionally extract it into a sibling directory;
   password entry is handled securely by `unzip`, and failed extraction leaves
-  no partial directory behind.
+  no partial directory behind. GZIP output is now detected by suffix or file
+  signature and can be decompressed into a sibling file with the same cleanup
+  and no-overwrite guarantees.
 
 - `lazy backup --relink <url>` and `lazy restore --relink <url>` replace the
   linked backup repository address, for example to switch from an HTTPS

@@ -49,6 +49,8 @@ fi
 
 if [ "${LAZY_GPG_TEST_ZIP_SIGNATURE:-0}" = "1" ]; then
     printf '\120\113\003\004mock zip data' > "$output"
+elif [ "${LAZY_GPG_TEST_GZIP_SIGNATURE:-0}" = "1" ]; then
+    printf '\037\213\010mock gzip data' > "$output"
 else
     printf 'decrypted %s\n' "$input" > "$output"
 fi
@@ -87,17 +89,34 @@ fi
 mkdir -p "$destination/nested"
 printf 'from %s\n' "$archive" > "$destination/nested/content.txt"
 EOF
-chmod +x "${MOCK_BIN}/gpg" "${MOCK_BIN}/unzip"
+
+cat > "${MOCK_BIN}/gzip" <<'EOF'
+#!/bin/bash
+set -u
+
+printf '%s\n' "$@" >> "$LAZY_GZIP_TEST_LOG"
+
+if [ "${LAZY_GZIP_TEST_FAIL:-0}" = "1" ]; then
+    printf 'partial output\n'
+    echo "mock: decompression failed" >&2
+    exit 2
+fi
+
+printf 'decompressed %s\n' "${2:-}"
+EOF
+chmod +x "${MOCK_BIN}/gpg" "${MOCK_BIN}/unzip" "${MOCK_BIN}/gzip"
 
 GPG_LOG="${TEST_ROOT}/gpg.log"
 UNZIP_LOG="${TEST_ROOT}/unzip.log"
+GZIP_LOG="${TEST_ROOT}/gzip.log"
 export LAZY_GPG_TEST_LOG="$GPG_LOG"
 export LAZY_UNZIP_TEST_LOG="$UNZIP_LOG"
+export LAZY_GZIP_TEST_LOG="$GZIP_LOG"
 
 HELP_OUTPUT="$(bash "$COMMAND" --help)"
 assert_has "$HELP_OUTPUT" "lazy gpg [encrypted-file]"
 assert_has "$HELP_OUTPUT" "never overwrites"
-assert_has "$HELP_OUTPUT" "extract it"
+assert_has "$HELP_OUTPUT" "ZIP or"
 
 EMPTY_BIN="${TEST_ROOT}/empty-bin"
 mkdir -p "$EMPTY_BIN"
@@ -135,6 +154,49 @@ UNKNOWN_FILE="${INPUT_DIR}/payload.bin"
 printf 'ciphertext\n' > "$UNKNOWN_FILE"
 PATH="${MOCK_BIN}:$PATH" bash "$COMMAND" "$UNKNOWN_FILE" >/dev/null
 [ -f "${UNKNOWN_FILE}.decrypted" ] || fail "unknown suffix did not use .decrypted"
+
+# GZIP output offers decompression into a sibling file and keeps the .gz file.
+GZIP_INPUT="${INPUT_DIR}/database.sql.gz.gpg"
+GZIP_OUTPUT="${INPUT_DIR}/database.sql.gz"
+GZIP_DECOMPRESSED="${INPUT_DIR}/database.sql"
+printf 'ciphertext\n' > "$GZIP_INPUT"
+GZIP_RUN_OUTPUT="$(printf 'y\n' | PATH="${MOCK_BIN}:$PATH" bash "$COMMAND" "$GZIP_INPUT" 2>&1)"
+[ -f "$GZIP_OUTPUT" ] || fail "the decrypted GZIP file was not kept"
+[ -f "$GZIP_DECOMPRESSED" ] || fail "GZIP output was not decompressed"
+grep -qF "decompressed $GZIP_OUTPUT" "$GZIP_DECOMPRESSED" || fail "gzip output was not preserved"
+assert_has "$GZIP_RUN_OUTPUT" "The decrypted file is GZIP data"
+assert_has "$GZIP_RUN_OUTPUT" "Decompressed successfully:"
+grep -qxF -- "-dc" "$GZIP_LOG" || fail "gzip was not called in decompression mode"
+grep -qxF -- "$GZIP_OUTPUT" "$GZIP_LOG" || fail "gzip did not receive the decrypted GZIP file"
+
+# GZIP magic is recognized even if the decrypted filename has no .gz suffix.
+GZIP_MAGIC_INPUT="${INPUT_DIR}/compressed-data.gpg"
+printf 'ciphertext\n' > "$GZIP_MAGIC_INPUT"
+GZIP_MAGIC_OUTPUT="$(
+    printf 'n\n' |
+        LAZY_GPG_TEST_GZIP_SIGNATURE=1 PATH="${MOCK_BIN}:$PATH" \
+        bash "$COMMAND" "$GZIP_MAGIC_INPUT" 2>&1
+)"
+assert_has "$GZIP_MAGIC_OUTPUT" "The decrypted file is GZIP data"
+assert_has "$GZIP_MAGIC_OUTPUT" "Skipped decompression."
+
+# A gzip error may write partial stdout; it must remain private in the temp
+# directory and be removed while the successfully decrypted .gz file is kept.
+BAD_GZIP_INPUT="${INPUT_DIR}/broken.txt.gz.gpg"
+BAD_GZIP_OUTPUT="${INPUT_DIR}/broken.txt.gz"
+BAD_GZIP_DECOMPRESSED="${INPUT_DIR}/broken.txt"
+printf 'ciphertext\n' > "$BAD_GZIP_INPUT"
+if printf 'y\n' |
+    LAZY_GZIP_TEST_FAIL=1 PATH="${MOCK_BIN}:$PATH" \
+    bash "$COMMAND" "$BAD_GZIP_INPUT" >"${TEST_ROOT}/bad-gzip.log" 2>&1; then
+    fail "a gzip failure should be returned to the caller"
+fi
+[ -f "$BAD_GZIP_OUTPUT" ] || fail "failed decompression removed the decrypted GZIP file"
+[ ! -e "$BAD_GZIP_DECOMPRESSED" ] || fail "failed decompression left a partial output"
+if find "$INPUT_DIR" -maxdepth 1 -name '.lazy-gzip.*' | grep -q .; then
+    fail "failed decompression left a temporary directory"
+fi
+grep -qF "No decompressed file was saved" "${TEST_ROOT}/bad-gzip.log" || fail "gzip failure was not explained"
 
 # ZIP output offers extraction into a sibling directory. unzip owns the hidden
 # password prompt instead of receiving a password on its command line.
