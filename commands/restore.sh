@@ -9,7 +9,7 @@ source "${SCRIPT_DIR}/../lib/backup-common.sh"
 
 usage() {
     echo "Usage:"
-    echo "  lazy restore [--repository <url>]"
+    echo "  lazy restore [--repository <url> | --relink <url>]"
     echo ""
     echo "Fetch the linked backup and choose what to restore. Standard rows start"
     echo "checked; security-sensitive Codex command rules start unchecked."
@@ -17,10 +17,12 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --repository <url>  Link this repository on a new machine"
+    echo "  --relink <url>      Replace the linked repository address, then restore"
     echo "  -h, --help          Show this help"
 }
 
 REQUESTED_REPOSITORY=""
+RELINK_REPOSITORY=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repository|--repo)
@@ -31,11 +33,24 @@ while [ $# -gt 0 ]; do
             fi
             REQUESTED_REPOSITORY="$1"
             ;;
+        --relink)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --relink needs an address." >&2
+                exit 1
+            fi
+            RELINK_REPOSITORY="$1"
+            ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Error: Unexpected argument -> $1" >&2; echo ""; usage; exit 1 ;;
     esac
     shift
 done
+
+if [ -n "$REQUESTED_REPOSITORY" ] && [ -n "$RELINK_REPOSITORY" ]; then
+    echo "Error: Use either --repository or --relink, not both." >&2
+    exit 1
+fi
 
 backup_common_init
 backup_require_tools || exit 1
@@ -45,6 +60,9 @@ if ! command -v fzf >/dev/null 2>&1; then
     exit 1
 fi
 
+if [ -n "$RELINK_REPOSITORY" ]; then
+    backup_relink_repository "$RELINK_REPOSITORY" || exit 1
+fi
 backup_ensure_repository "$REQUESTED_REPOSITORY" || exit 1
 backup_update_checkout || exit 1
 

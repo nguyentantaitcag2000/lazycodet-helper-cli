@@ -8,6 +8,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `lazy backup --relink <url>` and `lazy restore --relink <url>` replace the
+  linked backup repository address, for example to switch from an HTTPS
+  address that authenticates as the wrong GitHub account to the SSH address.
+  The new address is checked before anything changes. The local checkout is
+  kept for the same repository or an empty one, so an earlier failed push is
+  delivered; a checkout of unrelated history is moved aside instead of
+  deleted, and the switch is refused if that would strand unpushed commits.
+
 - `lazy backup` now stores ordinary reviewable files by default, allowing
   GitHub to show line-by-line changes. `--format archive` retains the original
   tar-based snapshot when full permissions, empty directories, or nested Git

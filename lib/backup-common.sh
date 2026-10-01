@@ -143,6 +143,104 @@ backup_ensure_repository() {
     }
 }
 
+# Replace the saved link, for example to move from an HTTPS address to the SSH
+# address of the same repository. The local checkout is kept when the new
+# remote is empty or shares its history, so a commit that failed to push is
+# pushed on the next run. A checkout of unrelated history is moved aside and
+# the new repository is cloned in its place by backup_ensure_repository.
+backup_relink_repository() {
+    local new_url="$1"
+    local current_url
+    local remote_refs
+    local related=0
+    local ref
+    local previous_dir
+
+    backup_validate_url "$new_url" || return 1
+
+    current_url="$(backup_read_linked_url)"
+    if [ "$current_url" = "$new_url" ]; then
+        echo "Info: The backup repository is already linked to $new_url"
+        return 0
+    fi
+
+    # Probe access before touching anything, so a mistyped address or a
+    # missing permission leaves the current link working.
+    echo "Checking access to $new_url"
+    if ! remote_refs="$(git ls-remote -- "$new_url")"; then
+        echo "Error: Could not access $new_url" >&2
+        echo "       The saved backup repository link was not changed." >&2
+        return 1
+    fi
+
+    if [ -e "$BACKUP_REPO_DIR" ]; then
+        if ! git -C "$BACKUP_REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            echo "Error: Backup checkout exists but is not a Git repository:" >&2
+            echo "       $BACKUP_REPO_DIR" >&2
+            return 1
+        fi
+        backup_require_clean_checkout || return 1
+
+        if [ -n "$remote_refs" ] && git -C "$BACKUP_REPO_DIR" rev-parse --verify -q HEAD >/dev/null; then
+            if ! git -C "$BACKUP_REPO_DIR" fetch -q --no-tags -- "$new_url" '+refs/heads/*:refs/lazy-relink/*'; then
+                echo "Error: Could not fetch $new_url" >&2
+                return 1
+            fi
+            while IFS= read -r ref; do
+                if git -C "$BACKUP_REPO_DIR" merge-base HEAD "$ref" >/dev/null 2>&1; then
+                    related=1
+                    break
+                fi
+            done < <(git -C "$BACKUP_REPO_DIR" for-each-ref --format='%(refname)' refs/lazy-relink/)
+            git -C "$BACKUP_REPO_DIR" for-each-ref --format='delete %(refname)' refs/lazy-relink/ |
+                git -C "$BACKUP_REPO_DIR" update-ref --stdin
+
+            if [ "$related" -eq 0 ]; then
+                if [ -n "$(git -C "$BACKUP_REPO_DIR" rev-list -n 1 HEAD --not --remotes=origin)" ]; then
+                    echo "Error: $new_url has unrelated history, and the local backup" >&2
+                    echo "       checkout has commits that were never pushed:" >&2
+                    echo "       $BACKUP_REPO_DIR" >&2
+                    echo "       Push or discard them before linking another repository." >&2
+                    return 1
+                fi
+                previous_dir="$BACKUP_REPO_DIR.previous.$(date '+%Y%m%d%H%M%S')"
+                mv -- "$BACKUP_REPO_DIR" "$previous_dir" || return 1
+                echo "Moved the checkout of the previous repository to:"
+                echo "  $previous_dir"
+            fi
+        fi
+    fi
+
+    if [ -e "$BACKUP_REPO_DIR" ]; then
+        if git -C "$BACKUP_REPO_DIR" remote get-url origin >/dev/null 2>&1; then
+            git -C "$BACKUP_REPO_DIR" remote set-url origin "$new_url" || return 1
+        else
+            git -C "$BACKUP_REPO_DIR" remote add origin "$new_url" || return 1
+        fi
+        # Remote-tracking refs still describe the old address. Refresh them,
+        # and drop an upstream that the new remote does not have (an empty
+        # repository) so the next push sets it again.
+        if ! git -C "$BACKUP_REPO_DIR" fetch -q --prune origin; then
+            echo "Error: Could not fetch $new_url" >&2
+            return 1
+        fi
+        if git -C "$BACKUP_REPO_DIR" symbolic-ref -q HEAD >/dev/null &&
+           ! backup_has_upstream; then
+            git -C "$BACKUP_REPO_DIR" branch --unset-upstream >/dev/null 2>&1 || true
+        fi
+    fi
+
+    backup_save_linked_url "$new_url" || {
+        echo "Error: Could not save the backup repository link." >&2
+        return 1
+    }
+    echo "Linked backup repository: $new_url"
+}
+
+backup_has_upstream() {
+    git -C "$BACKUP_REPO_DIR" rev-parse --verify -q '@{upstream}' >/dev/null 2>&1
+}
+
 backup_require_clean_checkout() {
     if [ -n "$(git -C "$BACKUP_REPO_DIR" status --porcelain 2>/dev/null)" ]; then
         echo "Error: The local backup checkout has uncommitted changes:" >&2
@@ -155,9 +253,11 @@ backup_require_clean_checkout() {
 backup_update_checkout() {
     backup_require_clean_checkout || return 1
 
-    # An empty remote has no HEAD to pull. Once the first backup exists, clones
-    # have an upstream and can use the normal rebase-based update path.
-    if git -C "$BACKUP_REPO_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+    # An empty remote has no HEAD to pull, and a checkout relinked to an empty
+    # repository has no upstream yet. Once the first backup is pushed, the
+    # branch tracks the remote and uses the normal rebase-based update path.
+    if git -C "$BACKUP_REPO_DIR" rev-parse --verify HEAD >/dev/null 2>&1 &&
+       backup_has_upstream; then
         if ! git -C "$BACKUP_REPO_DIR" pull --rebase; then
             echo "Error: Could not update the local backup checkout." >&2
             return 1

@@ -10,7 +10,7 @@ source "${SCRIPT_DIR}/../lib/backup-common.sh"
 
 usage() {
     echo "Usage:"
-    echo "  lazy backup [--repository <url>] [--format folder|archive]"
+    echo "  lazy backup [--repository <url> | --relink <url>] [--format folder|archive]"
     echo ""
     echo "Snapshot detected Claude and Codex instructions, skills, rules, and custom"
     echo "agents, then push them to the linked Git repository. The first"
@@ -21,15 +21,16 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --repository <url>  Link this repository on the first run"
+    echo "  --relink <url>      Replace the linked repository address, then back up"
     echo "  --format <format>   Store reviewable folders (default) or tar archives"
     echo "  -h, --help          Show this help"
     echo ""
-    echo "To change repository, remove both paths and run backup again:"
-    echo "  ~/.config/lazy/backup-repository"
-    echo "  ~/.local/share/lazy/backup-repository"
+    echo "To fix a mistyped address or switch HTTPS to SSH, run for example:"
+    echo "  lazy backup --relink git@github.com:you/backup.git"
 }
 
 REQUESTED_REPOSITORY=""
+RELINK_REPOSITORY=""
 BACKUP_FORMAT="folder"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -40,6 +41,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             REQUESTED_REPOSITORY="$1"
+            ;;
+        --relink)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Error: --relink needs an address." >&2
+                exit 1
+            fi
+            RELINK_REPOSITORY="$1"
             ;;
         --format)
             shift
@@ -56,6 +65,11 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if [ -n "$REQUESTED_REPOSITORY" ] && [ -n "$RELINK_REPOSITORY" ]; then
+    echo "Error: Use either --repository or --relink, not both." >&2
+    exit 1
+fi
+
 case "$BACKUP_FORMAT" in
     folder|archive) ;;
     *) echo "Error: Unsupported backup format: $BACKUP_FORMAT" >&2; exit 1 ;;
@@ -63,6 +77,9 @@ esac
 
 backup_common_init
 backup_require_tools || exit 1
+if [ -n "$RELINK_REPOSITORY" ]; then
+    backup_relink_repository "$RELINK_REPOSITORY" || exit 1
+fi
 backup_ensure_repository "$REQUESTED_REPOSITORY" || exit 1
 backup_update_checkout || exit 1
 

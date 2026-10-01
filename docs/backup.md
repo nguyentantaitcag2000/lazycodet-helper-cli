@@ -80,8 +80,43 @@ and data environment variables are respected. A backup first rebases on the
 remote, replaces the previous snapshot, creates a commit only when content
 changed, and pushes it.
 
-To change repositories, remove both the saved address and local checkout, then
-run `lazy backup` again. Removing the checkout does not remove the remote data.
+## Changing the linked repository
+
+`--repository` only links the first time; afterwards a different address is
+rejected. To fix a mistyped address, switch transport, or move to another
+repository, relink it:
+
+```bash
+lazy backup --relink git@github.com:you/private-machine-backup.git
+```
+
+The new address is checked with `git ls-remote` before anything changes, so an
+unreachable address or a missing permission keeps the current link. After
+relinking, the backup runs as usual. What happens to the local checkout depends
+on the new remote:
+
+| New remote | Local checkout |
+|---|---|
+| Same repository under another address (HTTPS to SSH) | Kept. Only `origin` changes, and a commit whose earlier push failed is pushed now. |
+| Empty repository | Kept. The existing backup history is pushed to it. |
+| Repository with unrelated history | Moved to `~/.local/share/lazy/backup-repository.previous.<timestamp>`, and the new repository is cloned. This is refused when the old checkout has commits that were never pushed. |
+
+`lazy restore --relink <url>` does the same before restoring.
+
+### Push denied with HTTPS (403)
+
+An HTTPS address authenticates with whatever account the Git credential helper
+or the terminal's `GIT_ASKPASS` supplies. The integrated terminal in VS Code,
+for example, uses the GitHub account signed in to VS Code, which may not be the
+owner of the backup repository:
+
+```text
+remote: Permission to you/private-machine-backup.git denied to other-account.
+fatal: unable to access 'https://github.com/...': The requested URL returned error: 403
+```
+
+Relinking to the SSH address uses your SSH key instead. Check which account
+that key belongs to with `ssh -T git@github.com`.
 
 If an older version of `lazy backup` already pushed broader machine state,
 narrowing the current snapshot does not erase those files from Git history.

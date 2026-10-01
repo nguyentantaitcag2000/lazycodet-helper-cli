@@ -13,6 +13,9 @@ the command:
 lazy restore --repository git@github.com:you/private-machine-backup.git
 ```
 
+To change the linked address later, for example from HTTPS to SSH, pass
+`--relink <url>`; see [Changing the linked repository](backup.md#changing-the-linked-repository).
+
 The command fetches the newest backup, automatically detects whether it uses
 the folder or archive format, and opens an `fzf` checkbox-style picker.
 All standard agent-file groups are checked initially. Codex command rules are

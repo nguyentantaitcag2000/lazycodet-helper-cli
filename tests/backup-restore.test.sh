@@ -250,4 +250,84 @@ printf '%s\n' "$REMOTE" | \
 [ "$(cat "$PROMPT_CONFIG/backup-repository")" = "$REMOTE" ] ||
     fail "prompted repository address was not retained"
 
+# --relink and --repository express different intents and cannot be combined.
+if run_source backup --repository "$REMOTE" --relink "$REMOTE" > "$TEST_ROOT/relink-both.out" 2>&1; then
+    fail "--repository and --relink were accepted together"
+fi
+assert_file_has "$TEST_ROOT/relink-both.out" "not both"
+
+# An unreachable address is rejected before the saved link or checkout change.
+if run_source backup --relink "$TEST_ROOT/missing.git" > "$TEST_ROOT/relink-missing.out" 2>&1; then
+    fail "relink to an unreachable repository succeeded"
+fi
+assert_file_has "$TEST_ROOT/relink-missing.out" "link was not changed"
+[ "$(cat "$SOURCE_CONFIG/backup-repository")" = "$REMOTE" ] ||
+    fail "failed relink changed the saved link"
+[ "$(git -C "$SOURCE_REPO" remote get-url origin)" = "$REMOTE" ] ||
+    fail "failed relink changed the checkout origin"
+
+# Another address for the same repository (HTTPS -> SSH in practice) keeps the
+# checkout, so a commit whose push failed is delivered by the relinked run.
+SAME_URL="file://$REMOTE"
+printf 'unpushed\n' > "$SOURCE_REPO/unpushed-note"
+git -C "$SOURCE_REPO" add unpushed-note
+git -C "$SOURCE_REPO" -c user.name=t -c user.email=t@localhost \
+    commit -q -m "push failed earlier"
+run_source backup --relink "$SAME_URL" > "$TEST_ROOT/relink-same.out"
+[ "$(cat "$SOURCE_CONFIG/backup-repository")" = "$SAME_URL" ] || fail "relink did not save the new address"
+[ "$(git -C "$SOURCE_REPO" remote get-url origin)" = "$SAME_URL" ] || fail "relink did not update origin"
+git --git-dir="$REMOTE" log --format=%s HEAD | grep -x "push failed earlier" >/dev/null ||
+    fail "relinked backup did not push the previously unpushed commit"
+run_source backup --relink "$SAME_URL" > "$TEST_ROOT/relink-same-again.out"
+assert_file_has "$TEST_ROOT/relink-same-again.out" "already linked"
+
+# An empty repository receives the existing backup history, and later runs
+# track it normally.
+EMPTY_REMOTE="$TEST_ROOT/backup-empty.git"
+git init -q --bare "$EMPTY_REMOTE"
+run_source backup --relink "$EMPTY_REMOTE" > "$TEST_ROOT/relink-empty.out"
+git --git-dir="$EMPTY_REMOTE" log --format=%s HEAD | grep -x "push failed earlier" >/dev/null ||
+    fail "relink to an empty repository did not migrate the backup history"
+printf 'claude-v3\n' > "$SOURCE_HOME/.claude/CLAUDE.md"
+run_source backup > "$TEST_ROOT/relink-empty-next.out"
+[ "$(git --git-dir="$EMPTY_REMOTE" show HEAD:items/files/.claude/CLAUDE.md)" = "claude-v3" ] ||
+    fail "backup after relinking to an empty repository was not pushed"
+
+# A repository with unrelated history gets a fresh checkout; the previous one
+# is moved aside rather than deleted.
+OTHER_REMOTE="$TEST_ROOT/backup-other.git"
+OTHER_SEED="$TEST_ROOT/other-seed"
+git init -q --bare "$OTHER_REMOTE"
+git init -q "$OTHER_SEED"
+git -C "$OTHER_SEED" -c user.name=t -c user.email=t@localhost commit -q --allow-empty -m seed
+git -C "$OTHER_SEED" push -q "$OTHER_REMOTE" HEAD:refs/heads/main
+git --git-dir="$OTHER_REMOTE" symbolic-ref HEAD refs/heads/main
+OTHER_SEED_HEAD="$(git -C "$OTHER_SEED" rev-parse HEAD)"
+run_source backup --relink "$OTHER_REMOTE" > "$TEST_ROOT/relink-other.out"
+find "$SOURCE_STATE" -maxdepth 1 -name 'repository.previous.*' -print -quit | grep -q . ||
+    fail "checkout of unrelated history was not moved aside"
+git --git-dir="$OTHER_REMOTE" merge-base --is-ancestor "$OTHER_SEED_HEAD" HEAD ||
+    fail "backup to an unrelated repository did not build on its history"
+[ "$(git --git-dir="$OTHER_REMOTE" show HEAD:items/files/.claude/CLAUDE.md)" = "claude-v3" ] ||
+    fail "backup to an unrelated repository was not pushed"
+
+# Moving aside is refused when it would strand commits that were never pushed.
+git -C "$SOURCE_REPO" -c user.name=t -c user.email=t@localhost \
+    commit -q --allow-empty -m "not pushed"
+if run_source backup --relink "$REMOTE" > "$TEST_ROOT/relink-unpushed.out" 2>&1; then
+    fail "relink stranded unpushed commits"
+fi
+assert_file_has "$TEST_ROOT/relink-unpushed.out" "never pushed"
+[ "$(cat "$SOURCE_CONFIG/backup-repository")" = "$OTHER_REMOTE" ] ||
+    fail "refused relink changed the saved link"
+
+# Restore accepts the same option.
+printf 'local-before-relink-restore\n' > "$RESTORE_HOME/.claude/CLAUDE.md"
+LAZY_TEST_FZF_MODE=match LAZY_TEST_FZF_MATCH="$(printf 'claude-instructions\t')" \
+    run_restore restore --relink "$EMPTY_REMOTE" > "$TEST_ROOT/restore-relink.out"
+[ "$(cat "$RESTORE_CONFIG/backup-repository")" = "$EMPTY_REMOTE" ] ||
+    fail "restore --relink did not save the new address"
+[ "$(cat "$RESTORE_HOME/.claude/CLAUDE.md")" = "claude-v3" ] ||
+    fail "restore --relink did not restore from the relinked repository"
+
 echo "backup/restore tests passed"
