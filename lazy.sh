@@ -39,6 +39,7 @@ COMMANDS=(
     "caffeinate|macos|lazy caffeinate [--list] [--kill-all]|List and stop the caffeinate processes keeping this Mac awake"
     "claude|linux,wsl,git-bash,macos|lazy claude [name] [--add|--export|--import]|Pick, switch, add, export, or import saved Claude Code accounts"
     "claude.auth|git-bash|lazy claude.auth [distro]|Sync the Claude Code login between Windows and a WSL distro"
+    "claude.guard|linux,wsl,macos|lazy claude.guard [--check] [--arm] [--uninstall]|Only let Claude Code start in allowlisted repositories, with a kill switch"
     "fix.font|git-bash|lazy fix.font [--check]|Fix garbled Vietnamese/UTF-8 text on Windows (locale, vim, console)"
     "gpg|linux,wsl,git-bash,macos|lazy gpg [encrypted-file]|Decrypt a GPG file and optionally unpack ZIP or GZIP output"
     "git.commit|linux,wsl,git-bash,macos|lazy git.commit|Pick changed files and commit only those files (requires fzf)"

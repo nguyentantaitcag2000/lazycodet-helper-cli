@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-10-05]
+
+### Added
+
+- `lazy claude.guard` keeps Claude Code out of repositories it has no business
+  running in, which matters on a machine whose Claude Code reports the current
+  repository name to company telemetry. It derives an allowlist from the
+  `origin` remote of the repository it is run in, allowing that organisation
+  rather than the whole Git host, and recognising a per-account `~/.ssh/config`
+  alias so both spellings of the same organisation match. A non-Git directory,
+  a repository with no `origin`, a lookalike organisation or host, and a remote
+  containing a path traversal are all refused.
+
+  An optional kill switch refuses everywhere and removes the execute bit from
+  the executable, so an absolute path cannot get round it; `claude-run` then
+  opens it for exactly one session and re-arms it on exit. Because Claude Code
+  is a TUI that must run in the foreground, and Bash defers traps while a
+  foreground child runs, a session killed with `SIGKILL` never reaches its
+  cleanup; the startup block re-asserts the lock on every new shell and uses
+  lease files to avoid re-locking a session that is genuinely live.
+
+  The guard goes on `PATH` rather than into an alias or a shell function, so
+  `command claude`, `\claude` and non-interactive child shells are covered too.
+  On WSL a Windows-side install is shadowed as `claude.exe`. Nothing is run
+  with `sudo`, nothing outside the home directory is touched, and telemetry,
+  `OTEL_*` and managed settings are left alone. `--uninstall` restores the
+  machine.
+
 ## [2026-10-01]
 
 ### Added
