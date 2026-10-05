@@ -49,3 +49,6 @@ jobs:
 
       - name: Test laravel.fix-permission
         run: bash tests/laravel.fix-permission.test.sh
+
+      - name: Test claude.guard
+        run: bash tests/claude.guard.test.sh

@@ -21,6 +21,7 @@ Status meanings:
 | `caffeinate`             | Excluded²         | Excluded²                                    | Supported         | Excluded²                                |
 | `claude`                 | Supported         | Supported                                    | Supported⁵        | Supported                                |
 | `claude.auth`            | Excluded³         | Excluded³                                    | Excluded³         | Supported                                |
+| `claude.guard`           | Supported         | Supported⁹                                   | Supported         | Excluded¹⁰                               |
 | `fix.font`               | Excluded⁴         | Excluded⁴                                    | Excluded⁴         | Supported                                |
 | `gpg`                    | Supported         | Supported                                    | Supported         | Supported                                |
 | `git.commit`             | Supported         | Supported                                    | Supported         | Supported                                |
@@ -56,6 +57,16 @@ Status meanings:
 8. `laravel.fix-permission` sets Unix owners, groups, mode bits, and ACLs. NTFS,
    as seen from Git Bash, has none of those; `chmod` there is emulated and
    `chown` does nothing. Run it inside WSL or the container instead.
+
+9. `claude.guard` locks the Linux-side executable. A Windows-side Claude Code
+   install is shadowed under the name `claude.exe` so it is guarded from WSL,
+   but running it from PowerShell or cmd stays outside the guard: `/mnt/c` is
+   a `drvfs`/`9p` mount with no real execute bit, so nothing on the Linux side
+   can lock it.
+10. `claude.guard`'s kill switch removes the execute bit from the Claude Code
+    executable. On NTFS, as seen from Git Bash, `chmod` is emulated and does
+    nothing, so the kill switch would report success while changing nothing.
+    Run it inside WSL instead.
 
 The source of truth for runtime availability is the command registry in
 `lazy.sh`. When this matrix and the registry disagree, update both in the same
