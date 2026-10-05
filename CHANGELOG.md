@@ -32,6 +32,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   `OTEL_*` and managed settings are left alone. `--uninstall` restores the
   machine.
 
+### Changed
+
+- `lazy claude.guard` now arms the kill switch by default. It used to install
+  the allowlist and leave the kill switch off, so `claude` still started inside
+  an allowlisted repository and the guard looked as though it were not working.
+  Anyone installing this wants reaching for `claude` to stop working; blocking
+  only the repositories that were already wrong is the smaller half of it.
+  `--no-arm` installs the allowlist on its own, and re-running with `--no-arm`
+  now disarms a switch that is already armed instead of silently leaving it on.
+  The plan and the closing summary both state, in words, whether `claude` will
+  refuse everywhere or only outside the allowlist.
+
 ## [2026-10-01]
 
 ### Added

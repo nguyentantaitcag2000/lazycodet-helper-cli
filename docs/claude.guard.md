@@ -13,7 +13,7 @@ This command installs two layers in front of the real executable:
 | Layer | What it does |
 |---|---|
 | Repository allowlist | `claude` only starts when the `origin` remote of the current repository matches. A non-Git directory, a repository with no `origin`, and anybody else's repository are all refused. |
-| Kill switch (optional) | `claude` refuses everywhere, and the execute bit is removed from the executable so an absolute path cannot get round it either. `claude-run` opens it for exactly one session. |
+| Kill switch (on by default) | `claude` refuses everywhere, and the execute bit is removed from the executable so an absolute path cannot get round it either. `claude-run` opens it for exactly one session. Install with `--no-arm` to leave this off. |
 
 It never touches telemetry, `OTEL_*`, or managed settings. The point is to keep
 Claude Code out of the wrong repository, not out of monitoring.
@@ -22,7 +22,7 @@ Claude Code out of the wrong repository, not out of monitoring.
 lazy claude.guard                 # derive the allowlist from this repo, install, ask first
 lazy claude.guard --check         # report what is installed and what would change
 lazy claude.guard -y              # install without the confirmation
-lazy claude.guard --arm           # install and arm the kill switch straight away
+lazy claude.guard --no-arm        # allowlist only; leave the kill switch disarmed
 lazy claude.guard --exact         # allow only this repository, not its whole organisation
 lazy claude.guard --allow 'github.com/other-org/*'   # extra entries (repeatable)
 lazy claude.guard --bin ~/.local/bin/claude          # point at the executable yourself
@@ -64,7 +64,15 @@ is rejected outright. That is what keeps these out:
 | `git@github.com:acme-ltd/../other/r.git` | path traversal |
 | `/srv/local/repo` | not a remote |
 
-## Daily use once the kill switch is armed
+## Daily use
+
+The kill switch is armed by default, so after installing, `claude` refuses
+everywhere and `claude-run` is how you start a session. That is the point: if
+`claude` still worked inside the allowed repository, the habit this is meant to
+break would survive.
+
+With `--no-arm` only the allowlist applies, and `claude` starts normally inside
+an allowlisted repository.
 
 | Command | What it does |
 |---|---|
@@ -98,12 +106,26 @@ Executable now: 1 file(s) carry the execute bit
 Will:
   write the guard scripts into /home/you/.local/bin-guard
   add a guard block to /home/you/.bashrc (PATH + self-heal)
-  leave the kill switch off (arm it later with: claude-reblock)
+  arm the kill switch: 'claude' will refuse in EVERY directory
+    (use 'claude-run' for one session, or re-run with --no-arm)
 
 Apply? [y/N]
 ```
 
-Refused, in a repository that is not on the list:
+Refused because the kill switch is armed, in the allowed repository:
+
+```
+  CLAUDE CODE DISABLED
+
+  The kill switch is armed; no repository can start Claude Code.
+  Armed at: 2026-10-05 13:52:11 +0700
+
+  One deliberate session (kill switch stays armed):  claude-run
+  Disarm it entirely:                                claude-unblock
+```
+
+Refused by the allowlist (with the kill switch disarmed), in a repository that
+is not on the list:
 
 ```
   CLAUDE CODE BLOCKED   Repository is not on the allowlist. origin: git@github.com:someone/side.git
