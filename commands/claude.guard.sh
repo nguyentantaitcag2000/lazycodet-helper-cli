@@ -14,9 +14,10 @@
 #   1. a repository allowlist: `claude` only starts when the origin remote of
 #      the current repository matches, so a non-Git directory, a repository
 #      with no origin, and anybody else's repository are all refused;
-#   2. an optional kill switch: `claude` refuses everywhere, and the execute
-#      bit is removed from the executable so an absolute path cannot get round
-#      it either. `claude-run` then opens it for exactly one session.
+#   2. a kill switch, armed by default: `claude` refuses everywhere, and the
+#      execute bit is removed from the executable so an absolute path cannot
+#      get round it either. `claude-run` then opens it for exactly one session.
+#      `--no-arm` installs layer 1 on its own.
 #
 # It does not touch telemetry, OTEL variables, or managed settings. The point
 # is to keep Claude Code out of the wrong repository, not out of monitoring.
@@ -45,16 +46,18 @@ LEGACY_CLOSE='# <<< claude-code repository guard <<<'
 
 usage() {
     echo "Usage:"
-    echo "  lazy claude.guard [--check] [-y] [--arm] [--exact] [--allow <pattern>]..."
+    echo "  lazy claude.guard [--check] [-y] [--no-arm] [--exact] [--allow <pattern>]..."
     echo "                    [--bin <path>] [--rc <file>] [--uninstall]"
     echo ""
     echo "Installs a repository allowlist in front of Claude Code, derived from the"
-    echo "origin remote of the repository you run this in, plus an optional kill switch."
+    echo "origin remote of the repository you run this in, plus a kill switch that is"
+    echo "armed by default."
     echo ""
     echo "Options:"
     echo "      --check            Report what is installed and what would change; change nothing"
     echo "  -y, --yes              Apply without asking for confirmation"
-    echo "      --arm              Arm the kill switch straight away (default: install it, leave it off)"
+    echo "      --no-arm           Install the allowlist only, leaving the kill switch disarmed"
+    echo "      --arm              Arm the kill switch (the default; accepted for clarity)"
     echo "      --exact            Allow only this one repository, not its whole organisation"
     echo "      --allow <pattern>  Extra allowlist entry, e.g. 'github.com/other-org/*' (repeatable)"
     echo "      --bin <path>       Path to the real Claude Code executable (default: detected)"
@@ -62,13 +65,18 @@ usage() {
     echo "      --uninstall        Remove the guard, restore the executable, clean the startup file"
     echo "  -h, --help             Show this help"
     echo ""
-    echo "After installing, 'claude' is guarded. With the kill switch armed, use"
-    echo "'claude-run' for one session; it re-arms the switch when Claude Code exits."
+    echo "After installing, 'claude' refuses everywhere, because the kill switch is armed"
+    echo "by default. Use 'claude-run' for one session; it re-arms the switch when Claude"
+    echo "Code exits. With --no-arm only the allowlist applies, so 'claude' still starts"
+    echo "inside an allowlisted repository."
 }
 
 CHECK_ONLY=0
 ASSUME_YES=0
-DO_ARM=0
+# Armed by default. With the kill switch off, `claude` still starts inside an
+# allowlisted repository, which reads as "the guard is not working" to anyone
+# who installed this to stop themselves reaching for `claude` at all.
+DO_ARM=1
 EXACT=0
 UNINSTALL=0
 OPT_BIN=""
@@ -89,6 +97,7 @@ while [ $# -gt 0 ]; do
         --check) CHECK_ONLY=1 ;;
         -y|--yes) ASSUME_YES=1 ;;
         --arm) DO_ARM=1 ;;
+        --no-arm) DO_ARM=0 ;;
         --exact) EXACT=1 ;;
         --uninstall) UNINSTALL=1 ;;
         --allow) need_value "$@"; EXTRA_ALLOW+=("$2"); shift ;;
@@ -503,11 +512,12 @@ else
         PLAN+=("remove the superseded $f")
     done
     if [ "$DO_ARM" -eq 1 ]; then
-        PLAN+=("arm the kill switch (removes the execute bit)")
+        PLAN+=("arm the kill switch: 'claude' will refuse in EVERY directory")
+        PLAN+=("  (use 'claude-run' for one session, or re-run with --no-arm)")
     elif [ -e "$DISABLE_FLAG" ]; then
-        PLAN+=("leave the kill switch armed as it is")
+        PLAN+=("disarm the kill switch: 'claude' will start inside an allowlisted repository")
     else
-        PLAN+=("leave the kill switch off (arm it later with: claude-reblock)")
+        PLAN+=("leave the kill switch off: 'claude' starts inside an allowlisted repository")
     fi
 fi
 
@@ -686,6 +696,11 @@ echo "  wired $RC_FILE"
 if [ "$DO_ARM" -eq 1 ]; then
     "$GUARD_DIR/claude-reblock" >/dev/null 2>&1 || true
     echo "  armed the kill switch"
+elif [ -e "$DISABLE_FLAG" ]; then
+    # --no-arm on a machine where it is already armed has to actually disarm,
+    # or the flag would silently outlive the request.
+    "$GUARD_DIR/claude-unblock" >/dev/null 2>&1 || true
+    echo "  disarmed the kill switch (--no-arm)"
 fi
 
 # --- Verify ------------------------------------------------------------------
@@ -719,9 +734,21 @@ fi
 echo ""
 echo "Done. Open a new terminal (or: source $RC_FILE)."
 echo ""
-echo "  claude          guarded; only starts in an allowlisted repository"
-echo "  claude-run      one session while the kill switch stays armed"
-echo "  claude-reblock  arm the kill switch"
-echo "  claude-unblock  disarm it entirely"
+if [ -e "$DISABLE_FLAG" ]; then
+    echo "  The kill switch is ARMED: 'claude' refuses in every directory."
+    echo ""
+    echo "  claude-run      how you start a session, in an allowlisted repository"
+    echo "  claude          refuses, and says what to run instead"
+    echo "  claude-unblock  disarm, so 'claude' works in allowlisted repositories"
+    echo "  claude-reblock  arm it again"
+else
+    echo "  The kill switch is OFF: 'claude' still starts inside an allowlisted"
+    echo "  repository. Run 'claude-reblock' to make it refuse everywhere."
+    echo ""
+    echo "  claude          starts only inside an allowlisted repository"
+    echo "  claude-run      one session with the kill switch left as it is"
+    echo "  claude-reblock  arm the kill switch"
+    echo "  claude-unblock  disarm it"
+fi
 echo ""
 echo "Undo everything with: lazy claude.guard --uninstall"

@@ -119,6 +119,25 @@ grep -qF '>>> lazy claude.guard >>>' "$RC" || fail "rc block missing"
 grep -qF 'bin-guard' "$RC" || fail "rc block does not add the guard dir to PATH"
 ok "installs the scripts and wires the startup file"
 
+# The whole point of installing this is that reaching for `claude` stops
+# working. Leaving the kill switch off by default meant `claude` still started
+# inside the allowed repository, which reads as a broken guard.
+[ -e "$FLAG" ] || fail "a plain install must arm the kill switch"
+assert_has "$OUT" "kill switch is ARMED"
+OUT="$(run_installed "$COMPANY" claude || true)"
+assert_has "$OUT" "CLAUDE CODE DISABLED"
+assert_lacks "$OUT" "STUB-CLAUDE-STARTED"
+OUT="$(run_installed "$COMPANY" claude-run)"
+assert_has "$OUT" "STUB-CLAUDE-STARTED"
+ok "a plain install blocks claude everywhere and leaves claude-run as the way in"
+
+echo "== --no-arm =="
+OUT="$(run_guard "$COMPANY" -y --no-arm)"
+[ ! -e "$FLAG" ] || fail "--no-arm must disarm an already-armed switch"
+assert_has "$OUT" "kill switch is OFF"
+[ -x "$STUB_BIN/claude" ] || fail "--no-arm must restore the execute bit"
+ok "--no-arm disarms and says so"
+
 echo "== generated allowlist logic =="
 check_allow() {
     ( HOME="$FAKE_HOME"; . "$GUARD_DIR/claude-guard-common.sh" && cg_is_allowed "$1" >/dev/null )
@@ -270,7 +289,7 @@ cat > "$STUB_BIN/claude.exe" <<'WINSTUB'
 echo "WINDOWS-STUB-STARTED"
 WINSTUB
 chmod +x "$STUB_BIN/claude.exe"
-run_guard "$COMPANY" -y >/dev/null
+run_guard "$COMPANY" -y --no-arm >/dev/null
 if [ "$(uname -s)" = "Linux" ] && grep -qi microsoft /proc/version 2>/dev/null; then
     [ -L "$GUARD_DIR/claude.exe" ] || fail "WSL should shadow claude.exe"
     OUT="$(run_installed "$PERSONAL" claude.exe || true)"
