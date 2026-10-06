@@ -31,6 +31,7 @@ COMMAND="$1"
 # Columns are aligned from the longest invocation so adding a command
 # never leaves the descriptions ragged.
 COMMANDS=(
+    "agent.notify|wsl,git-bash|lazy agent.notify [--check|--test|--uninstall]|Speak when Claude Code or Codex finishes a task, using Windows TTS"
     "agent.sync|linux,wsl,git-bash,macos|lazy agent.sync [project] [--check]|Link AGENTS.md and .agents/skills to their Claude sources"
     "backup|linux,wsl,git-bash,macos|lazy backup [--repository|--relink <url>] [--format folder|archive]|Back up Claude and Codex instructions, skills, rules, and custom agents"
     "branch|linux,wsl,git-bash,macos|lazy branch [--color[=<when>]]|List local branches with their descriptions, in color"

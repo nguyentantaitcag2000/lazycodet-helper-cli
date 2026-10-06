@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-10-06]
+
+### Added
+
+- `lazy agent.notify` installs one global `Stop` hook for Claude Code and one
+  for Codex, backed by a shared runtime that speaks through Windows' built-in
+  English text-to-speech engine. It preserves unrelated settings and hooks,
+  handles repeated installation without duplicates, skips Claude's temporary
+  stops while background work is active, and supports `--check`, `--test`, and
+  a targeted `--uninstall`. The command is available in WSL and Git Bash and
+  requires no AI model, API key, network service, or generated audio files.
+
 ## [2026-10-05]
 
 ### Added

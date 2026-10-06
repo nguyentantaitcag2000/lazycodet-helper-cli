@@ -62,11 +62,18 @@ assert_has "$CURRENT_USAGE" "lazy kill <port>"
 assert_has "$CURRENT_USAGE" "lazy restore"
 
 case "$CURRENT_PLATFORM" in
-    macos|linux|wsl)
+    macos|linux)
+        assert_lacks "$CURRENT_USAGE" "lazy agent.notify"
+        assert_lacks "$CURRENT_USAGE" "lazy claude.auth"
+        assert_lacks "$CURRENT_USAGE" "lazy fix.font"
+        ;;
+    wsl)
+        assert_has "$CURRENT_USAGE" "lazy agent.notify"
         assert_lacks "$CURRENT_USAGE" "lazy claude.auth"
         assert_lacks "$CURRENT_USAGE" "lazy fix.font"
         ;;
     git-bash)
+        assert_has "$CURRENT_USAGE" "lazy agent.notify"
         assert_has "$CURRENT_USAGE" "lazy claude.auth"
         assert_has "$CURRENT_USAGE" "lazy fix.font"
         ;;
@@ -76,6 +83,7 @@ esac
 # MSYSTEM is the primary Git Bash signal, so this simulation is portable on the
 # Unix test hosts and exercises inclusion of Windows-only commands.
 GIT_BASH_USAGE="$(MSYSTEM=MINGW64 bash "$CLI" 2>&1 || true)"
+assert_has "$GIT_BASH_USAGE" "lazy agent.notify"
 assert_has "$GIT_BASH_USAGE" "lazy claude.auth"
 assert_has "$GIT_BASH_USAGE" "lazy fix.font"
 assert_has "$GIT_BASH_USAGE" "lazy git.commit"
@@ -92,17 +100,31 @@ if [ "$CURRENT_PLATFORM" != "git-bash" ]; then
         assert_has "$SIMULATED_USAGE" "lazy git.commit"
         assert_has "$SIMULATED_USAGE" "lazy gpg"
         assert_has "$SIMULATED_USAGE" "lazy restore"
+        if [ "$simulated_platform" = "Linux" ] && [ "$CURRENT_PLATFORM" = "wsl" ]; then
+            # /proc/version still identifies the real WSL kernel even when uname
+            # is stubbed, so this remains the WSL registry view.
+            assert_has "$SIMULATED_USAGE" "lazy agent.notify"
+        else
+            assert_lacks "$SIMULATED_USAGE" "lazy agent.notify"
+        fi
         assert_lacks "$SIMULATED_USAGE" "lazy claude.auth"
         assert_lacks "$SIMULATED_USAGE" "lazy fix.font"
     done
 
     WSL_USAGE="$(LAZY_TEST_UNAME=Linux WSL_DISTRO_NAME=Ubuntu MSYSTEM= \
         PATH="$MOCK_BIN:$PATH" bash "$CLI" 2>&1 || true)"
+    assert_has "$WSL_USAGE" "lazy agent.notify"
     assert_lacks "$WSL_USAGE" "lazy claude.auth"
     assert_lacks "$WSL_USAGE" "lazy fix.font"
 fi
 
 if [ "$CURRENT_PLATFORM" = "macos" ] || [ "$CURRENT_PLATFORM" = "linux" ]; then
+    if bash "$CLI" agent.notify --help >"$TEST_ROOT/notify-rejected" 2>&1; then
+        fail "Windows TTS command was dispatched on $CURRENT_PLATFORM"
+    fi
+    grep -qF "is not available" "$TEST_ROOT/notify-rejected" ||
+        fail "agent.notify platform rejection did not explain command availability"
+
     if bash "$CLI" claude.auth --help >"$TEST_ROOT/rejected" 2>&1; then
         fail "Windows-only command was dispatched on $CURRENT_PLATFORM"
     fi

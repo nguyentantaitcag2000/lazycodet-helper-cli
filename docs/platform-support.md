@@ -13,6 +13,7 @@ Status meanings:
 
 | Command                  | Linux             | WSL                                          | macOS             | Git Bash (Windows)                       |
 | ------------------------ | ----------------- | -------------------------------------------- | ----------------- | ---------------------------------------- |
+| `agent.notify`           | Not implemented¹¹ | Supported                                    | Not implemented¹¹ | Supported                                |
 | `agent.sync`             | Supported         | Supported                                    | Supported         | Supported¹                               |
 | `backup`                 | Supported         | Supported                                    | Supported         | Supported                                |
 | `branch`                 | Supported         | Supported                                    | Supported         | Supported                                |
@@ -67,6 +68,8 @@ Status meanings:
     executable. On NTFS, as seen from Git Bash, `chmod` is emulated and does
     nothing, so the kill switch would report success while changing nothing.
     Run it inside WSL instead.
+11. `agent.notify` uses Windows PowerShell and `System.Speech`. Native Linux and
+    macOS have different speech engines, but adapters for them are not implemented.
 
 The source of truth for runtime availability is the command registry in
 `lazy.sh`. When this matrix and the registry disagree, update both in the same

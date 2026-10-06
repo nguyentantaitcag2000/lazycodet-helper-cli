@@ -7,6 +7,7 @@ macOS, and Git Bash (Windows).
 
 | Command                                                         | What it does                                                                                                             |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [`lazy agent.notify`](docs/agent.notify.md)                     | Announce completed Claude Code and Codex turns with Windows' built-in text-to-speech                                     |
 | [`lazy agent.sync`](docs/agent.sync.md)                         | Link Codex agent config to the Claude-owned source files in any Git project                                              |
 | [`lazy backup`](docs/backup.md)                                 | Back up Claude and Codex instructions, skills, rules, and custom agents                                                  |
 | [`lazy branch`](docs/branch.md)                                 | List local branches with their descriptions, names and descriptions in different colors                                  |
