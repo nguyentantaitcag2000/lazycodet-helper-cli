@@ -48,6 +48,10 @@ directly and is not saved as an audio file.
 Claude Code can emit a temporary `Stop` event while background work is still in
 flight. The hook skips that event and waits for a later completed turn.
 
+The `Stop` handler stays in the foreground until the short spoken sentence
+finishes. Agent runtimes can cancel background hook processes as a turn closes,
+which would stop Windows speech before it becomes audible.
+
 ## Options
 
 - `--check` verifies the runtime, both hook entries, and the Windows speech

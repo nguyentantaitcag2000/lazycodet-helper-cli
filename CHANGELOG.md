@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026-10-07]
+
+### Fixed
+
+- `lazy agent.notify` keeps its `Stop` handler in the foreground until Windows
+  finishes the short spoken sentence. Running the speech process as an async
+  hook allowed Claude Code to cancel it immediately when the turn closed, so a
+  valid installation could remain silent. `--check` now reports that stale
+  async configuration and reinstalling replaces it.
+
 ## [2026-10-06]
 
 ### Added

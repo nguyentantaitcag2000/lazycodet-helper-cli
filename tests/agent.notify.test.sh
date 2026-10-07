@@ -105,9 +105,26 @@ for (const [provider, file] of [["claude", ".claude/settings.json"], ["codex", "
   const handlers = (config.hooks.Stop || []).flatMap(group => group.hooks || []);
   const managed = handlers.filter(h => h.command === `node "$HOME/.local/share/lazy/agent-notify/agent-notify.mjs" --hook ${provider}`);
   if (managed.length !== 1) process.exit(1);
+  if (managed[0].async === true) process.exit(2);
+  if (managed[0].timeout !== 20) process.exit(3);
 }
 ' "$FAKE_HOME" || fail 'reinstall duplicated a managed hook'
 run_notify --check >/dev/null || fail '--check rejected a healthy installation'
+
+echo '== check rejects the cancellable async configuration =='
+node -e '
+const fs = require("fs");
+const file = process.argv[1];
+const config = JSON.parse(fs.readFileSync(file));
+const managed = config.hooks.Stop.flatMap(group => group.hooks || [])
+  .find(h => h.command?.includes("agent-notify.mjs"));
+managed.async = true;
+fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+' "$FAKE_HOME/.claude/settings.json"
+if run_notify --check >/dev/null 2>&1; then
+    fail '--check accepted the cancellable async hook configuration'
+fi
+run_notify >/dev/null
 
 echo '== hook reads an English completion summary =='
 : > "$FAKE_PS_LOG"
