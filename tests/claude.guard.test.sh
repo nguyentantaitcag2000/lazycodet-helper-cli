@@ -249,6 +249,42 @@ check_allow 'git@github.com-work:acme-ltd/billing.git' || fail "the repo itself 
 ! check_allow 'git@github.com-work:acme-ltd/other.git' || fail "--exact must not allow siblings"
 ok "--exact pins the allowlist to this repository"
 
+echo "== PATH ordering: the guard must win in a login shell =="
+# Debian/Ubuntu ship a ~/.profile that sources ~/.bashrc FIRST and prepends
+# ~/.local/bin AFTERWARDS. A guard block written only to ~/.bashrc therefore
+# runs too early, and the real launcher ends up ahead of the guard: `claude`
+# bypasses the shim entirely while everything still looks installed.
+run_guard "$COMPANY" -y --uninstall >/dev/null
+cat > "$FAKE_HOME/.profile" <<PROFILE
+if [ -n "\$BASH_VERSION" ] && [ -f "\$HOME/.bashrc" ]; then . "\$HOME/.bashrc"; fi
+PATH="$STUB_BIN:\$PATH"
+export PATH
+PROFILE
+
+OUT="$(run_guard "$COMPANY" -y)"
+assert_has "$OUT" "Verified: in a new login shell, 'claude' resolves to the guard."
+grep -qF '>>> lazy claude.guard >>>' "$FAKE_HOME/.profile" \
+    || fail "the block must also reach the file that runs last"
+
+RESOLVED="$(HOME="$FAKE_HOME" PATH="/usr/bin:/bin" bash -lic 'command -v claude' 2>/dev/null | tail -1)"
+[ "$RESOLVED" = "$GUARD_DIR/claude" ] \
+    || fail "login shell resolved claude to '$RESOLVED', not the guard"
+ok "guard stays first even when .profile prepends after sourcing .bashrc"
+
+# A PATH that already has the guard somewhere, but not first, must be corrected
+# rather than left alone.
+RESOLVED="$(HOME="$FAKE_HOME" PATH="$STUB_BIN:$GUARD_DIR:/usr/bin:/bin" \
+    bash -lic 'command -v claude' 2>/dev/null | tail -1)"
+[ "$RESOLVED" = "$GUARD_DIR/claude" ] \
+    || fail "a wrong inherited order was not corrected; got '$RESOLVED'"
+ok "an inherited PATH with the guard out of front is put back in front"
+
+run_guard "$COMPANY" -y --uninstall >/dev/null
+grep -qF '>>> lazy claude.guard >>>' "$FAKE_HOME/.profile" \
+    && fail "uninstall must clean every startup file"
+ok "uninstall clears the block from every startup file"
+rm -f "$FAKE_HOME/.profile"
+
 echo "== migrating from a hand-rolled guard =="
 # The hand-rolled version this command replaces used its own rc markers and put
 # its scripts in ~/.local/bin. Left behind, the old block would prepend the

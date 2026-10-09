@@ -26,6 +26,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   a targeted `--uninstall`. The command is available in WSL and Git Bash and
   requires no AI model, API key, network service, or generated audio files.
 
+## [2026-10-09]
+
+### Fixed
+
+- `lazy claude.guard` put its block only in `~/.bashrc`, where on Debian and
+  Ubuntu it runs too early: `~/.profile` sources `~/.bashrc` first and prepends
+  `~/.local/bin` afterwards, so the real Claude Code launcher ended up ahead of
+  the guard on `PATH`. `claude` then bypassed the guard completely while
+  everything still looked installed, and the only thing still stopping it was
+  the kill switch's missing execute bit. Two things made it stick: the block
+  only added the guard directory when it was *absent*, so once the order was
+  wrong no later shell ever corrected it and every child shell inherited it;
+  and with no `~/.profile` or `~/.bash_profile` at all, a bash login shell
+  never reads `~/.bashrc`, so the guard did not apply to login shells either.
+
+  The block now goes into the login file as well, prepends unless the guard is
+  already first, creates `~/.profile` when no login file exists, and is removed
+  from every startup file on uninstall. Installing now verifies what `claude`
+  actually resolves to in a login shell instead of assuming, and reports it.
+
 ## [2026-10-05]
 
 ### Added

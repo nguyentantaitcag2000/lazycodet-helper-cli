@@ -209,33 +209,52 @@ fi
 
 # --- Shell startup file ------------------------------------------------------
 
-find_rc() {
-    local shell_name
+# Every startup file that has to carry the block.
+#
+# One file is not enough. Debian/Ubuntu's ~/.profile sources ~/.bashrc first
+# and prepends ~/.local/bin afterwards, so a block written only to ~/.bashrc
+# runs too early and the real launcher ends up ahead of the guard. Whichever
+# file runs last has to put the guard back in front, so the block goes in all
+# of them; it is idempotent by design.
+find_rc_files() {
+    local shell_name f
 
     if [ -n "$OPT_RC" ]; then
-        printf '%s' "$OPT_RC"
+        printf '%s\n' "$OPT_RC"
         return 0
     fi
 
     shell_name="$(basename "${SHELL:-/bin/bash}")"
-    case "$shell_name" in
-        zsh) printf '%s' "${ZDOTDIR:-$HOME}/.zshrc"; return 0 ;;
-    esac
-
-    # On macOS a Terminal tab is a login shell, which reads .bash_profile and
-    # not .bashrc. Writing to .bashrc there would silently do nothing unless
-    # .bash_profile already pulls it in.
-    if [ "$PLATFORM" = "macos" ] && [ -f "$HOME/.bash_profile" ] \
-        && ! grep -qE '(^|[^#])\.?[[:space:]]*(source[[:space:]]+)?[^#]*\.bashrc' "$HOME/.bash_profile" 2>/dev/null
-    then
-        printf '%s' "$HOME/.bash_profile"
+    if [ "$shell_name" = "zsh" ]; then
+        # zsh reads .zprofile before .zshrc, so .zshrc is already the last word.
+        printf '%s\n' "${ZDOTDIR:-$HOME}/.zshrc"
         return 0
     fi
 
-    printf '%s' "$HOME/.bashrc"
+    printf '%s\n' "$HOME/.bashrc"
+
+    local found=0
+    for f in "$HOME/.bash_profile" "$HOME/.profile"; do
+        if [ -f "$f" ]; then
+            printf '%s\n' "$f"
+            found=1
+        fi
+    done
+
+    # With no login file at all, a bash login shell reads neither .bash_profile
+    # nor .bashrc, so the guard would simply not apply there. Name ~/.profile so
+    # it gets created.
+    [ "$found" -eq 0 ] && printf '%s\n' "$HOME/.profile"
+    return 0
 }
 
-RC_FILE="$(find_rc)"
+RC_FILES=()
+while IFS= read -r f; do
+    [ -n "$f" ] && RC_FILES+=("$f")
+done <<EOF
+$(find_rc_files)
+EOF
+RC_FILE="${RC_FILES[0]}"
 
 # --- Allowlist ---------------------------------------------------------------
 
@@ -400,11 +419,29 @@ legacy_files() {
 }
 
 rc_has_block() {
-    [ -f "$RC_FILE" ] && grep -qF "$BLOCK_OPEN" "$RC_FILE"
+    local f
+    for f in "${RC_FILES[@]}"; do
+        [ -f "$f" ] && grep -qF "$BLOCK_OPEN" "$f" && return 0
+    done
+    return 1
+}
+
+# True only when every target file carries it; a block in .bashrc but not in
+# .profile is exactly the half-wired state this command exists to avoid.
+rc_fully_wired() {
+    local f
+    for f in "${RC_FILES[@]}"; do
+        [ -f "$f" ] && grep -qF "$BLOCK_OPEN" "$f" || return 1
+    done
+    return 0
 }
 
 rc_has_legacy_block() {
-    [ -f "$RC_FILE" ] && grep -qF "$LEGACY_OPEN" "$RC_FILE"
+    local f
+    for f in "${RC_FILES[@]}"; do
+        [ -f "$f" ] && grep -qF "$LEGACY_OPEN" "$f" && return 0
+    done
+    return 1
 }
 
 count_executable() {
@@ -451,7 +488,11 @@ if [ "$UNINSTALL" -eq 0 ]; then
     fi
 fi
 echo "Guard dir:   $GUARD_DIR"
-echo "Startup:     $RC_FILE$(rc_has_block && echo '  (already wired)')"
+printf 'Startup:    '
+for f in "${RC_FILES[@]}"; do
+    printf ' %s%s' "$f" "$( [ -f "$f" ] && grep -qF "$BLOCK_OPEN" "$f" && echo ' (wired)' )"
+done
+printf '\n' 
 
 if [ "$UNINSTALL" -eq 0 ]; then
     echo "Allowlist:"
@@ -499,15 +540,17 @@ $(installed_files)
 EOF
     [ -e "$GUARD_DIR/claude.exe" ] && PLAN+=("remove $GUARD_DIR/claude.exe")
     [ -d "$LEASE_DIR" ] && PLAN+=("remove $LEASE_DIR")
-    rc_has_block && PLAN+=("remove the guard block from $RC_FILE")
-    rc_has_legacy_block && PLAN+=("remove the superseded guard block from $RC_FILE")
+    rc_has_block && PLAN+=("remove the guard block from: ${RC_FILES[*]}")
+    rc_has_legacy_block && PLAN+=("remove the superseded guard block too")
 else
     PLAN+=("write the guard scripts into $GUARD_DIR")
-    rc_has_block \
-        && PLAN+=("refresh the guard block in $RC_FILE") \
-        || PLAN+=("add a guard block to $RC_FILE (PATH + self-heal)")
+    if rc_has_block; then
+        PLAN+=("refresh the guard block in: ${RC_FILES[*]}")
+    else
+        PLAN+=("add a guard block (PATH + self-heal) to: ${RC_FILES[*]}")
+    fi
     [ -n "$WIN_EXE" ] && PLAN+=("shadow claude.exe inside $GUARD_DIR")
-    rc_has_legacy_block && PLAN+=("remove the superseded guard block from $RC_FILE")
+    rc_has_legacy_block && PLAN+=("remove the superseded guard block from the startup files")
     for f in ${LEGACY_PRESENT[@]+"${LEGACY_PRESENT[@]}"}; do
         PLAN+=("remove the superseded $f")
     done
@@ -528,7 +571,7 @@ done
 echo ""
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
-    if [ "$UNINSTALL" -eq 0 ] && [ "$INSTALLED" -eq 1 ] && rc_has_block \
+    if [ "$UNINSTALL" -eq 0 ] && [ "$INSTALLED" -eq 1 ] && rc_fully_wired \
         && ! rc_has_legacy_block && [ "${#LEGACY_PRESENT[@]}" -eq 0 ]; then
         echo "The guard is installed. Re-run without --check to refresh it."
         exit 0
@@ -555,12 +598,12 @@ fi
 
 # --- Startup file block ------------------------------------------------------
 
-# Removes one marker-delimited block from the startup file, in place.
+# Removes one marker-delimited block from one file, in place.
 strip_block() {
-    local openmark="$1" closemark="$2" tmp
+    local file="$1" openmark="$2" closemark="$3" tmp
 
-    [ -f "$RC_FILE" ] || return 0
-    grep -qF "$openmark" "$RC_FILE" || return 0
+    [ -f "$file" ] || return 0
+    grep -qF "$openmark" "$file" || return 0
 
     tmp="$(mktemp "${TMPDIR:-/tmp}/lazy-claude-guard.XXXXXX")" || return 1
     # openmark/closemark, not open/close: gawk refuses a variable named after
@@ -569,42 +612,55 @@ strip_block() {
         index($0, openmark) { skip = 1 }
         !skip { print }
         index($0, closemark) { skip = 0 }
-    ' "$RC_FILE" > "$tmp" || { rm -f "$tmp"; return 1; }
-    cat "$tmp" > "$RC_FILE" || { rm -f "$tmp"; return 1; }
+    ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
     rm -f "$tmp"
 }
 
 strip_rc_block() {
-    strip_block "$BLOCK_OPEN" "$BLOCK_CLOSE" || return 1
-    strip_block "$LEGACY_OPEN" "$LEGACY_CLOSE"
+    local f
+    for f in "${RC_FILES[@]}"; do
+        strip_block "$f" "$BLOCK_OPEN" "$BLOCK_CLOSE" || return 1
+        strip_block "$f" "$LEGACY_OPEN" "$LEGACY_CLOSE" || return 1
+    done
 }
 
 write_rc_block() {
-    local dir_literal="$GUARD_DIR"
+    local file dir_literal="$GUARD_DIR"
     case "$dir_literal" in
         "$HOME"/*) dir_literal="\$HOME/${dir_literal#"$HOME"/}" ;;
     esac
 
-    mkdir -p "$(dirname "$RC_FILE")"
-    {
-        printf '\n%s\n' "$BLOCK_OPEN"
-        printf '# Put the guard ahead of the real Claude Code launcher. Using PATH rather\n'
-        printf '# than an alias or a function means `command claude`, `\\claude` and\n'
-        printf '# non-interactive child shells go through it too.\n'
-        printf 'case ":$PATH:" in\n'
-        printf '    *":%s:"*) ;;\n' "$dir_literal"
-        printf '    *) export PATH="%s:$PATH" ;;\n' "$dir_literal"
-        printf 'esac\n'
-        printf 'unset -f claude 2>/dev/null\n'
-        printf '# Self-heal: Claude Code is a TUI and runs in the foreground, and bash defers\n'
-        printf '# traps while a foreground child runs, so a claude-run session killed with\n'
-        printf '# SIGKILL never reaches its cleanup and would leave the kill switch silently\n'
-        printf '# off. Re-assert it here; skipped while a session is genuinely live.\n'
-        printf 'if [ -e "$HOME/.claude/claude-code-disabled" ] && [ -x "%s/claude-reblock" ]; then\n' "$dir_literal"
-        printf '    "%s/claude-reblock" -q 2>/dev/null\n' "$dir_literal"
-        printf 'fi\n'
-        printf '%s\n' "$BLOCK_CLOSE"
-    } >> "$RC_FILE"
+    for file in "${RC_FILES[@]}"; do
+        mkdir -p "$(dirname "$file")"
+        {
+            printf '\n%s\n' "$BLOCK_OPEN"
+            printf '# Put the guard ahead of the real Claude Code launcher. PATH rather than\n'
+            printf '# an alias or a function, so `command claude`, `\\claude` and\n'
+            printf '# non-interactive child shells go through it too.\n'
+            printf '#\n'
+            printf '# Prepend unless it is ALREADY FIRST, rather than only when it is absent.\n'
+            printf "# Debian/Ubuntu's ~/.profile sources ~/.bashrc and prepends ~/.local/bin\n"
+            printf '# afterwards, which puts the real launcher ahead of the guard. An\n'
+            printf '# "add it if missing" test would see the guard somewhere on PATH, do\n'
+            printf '# nothing, and leave the guard bypassed in every shell from then on.\n'
+            printf '# This form is plain POSIX: no word splitting, no bashisms, so it is\n'
+            printf '# safe in .profile under dash as well as in bash and zsh.\n'
+            printf 'case "$PATH" in\n'
+            printf '    "%s:"*) ;;\n' "$dir_literal"
+            printf '    *) PATH="%s:$PATH"; export PATH ;;\n' "$dir_literal"
+            printf 'esac\n'
+            printf 'unset -f claude 2>/dev/null\n'
+            printf '# Self-heal: Claude Code is a TUI and runs in the foreground, and bash\n'
+            printf '# defers traps while a foreground child runs, so a claude-run session\n'
+            printf '# killed with SIGKILL never reaches its cleanup and would leave the kill\n'
+            printf '# switch silently off. Re-assert it here; skipped while a session is live.\n'
+            printf 'if [ -e "$HOME/.claude/claude-code-disabled" ] && [ -x "%s/claude-reblock" ]; then\n' "$dir_literal"
+            printf '    "%s/claude-reblock" -q 2>/dev/null\n' "$dir_literal"
+            printf 'fi\n'
+            printf '%s\n' "$BLOCK_CLOSE"
+        } >> "$file"
+    done
 }
 
 # --- Uninstall ---------------------------------------------------------------
@@ -630,8 +686,8 @@ EOF
     [ -e "$GUARD_DIR/claude.exe" ] && rm -f "$GUARD_DIR/claude.exe" && echo "  removed $GUARD_DIR/claude.exe"
     rmdir "$GUARD_DIR" 2>/dev/null && echo "  removed $GUARD_DIR"
 
-    if rc_has_block; then
-        strip_rc_block && echo "  removed the guard block from $RC_FILE"
+    if rc_has_block || rc_has_legacy_block; then
+        strip_rc_block && echo "  removed the guard block from: ${RC_FILES[*]}"
     fi
 
     echo ""
@@ -691,7 +747,7 @@ done
 
 strip_rc_block || exit 1
 write_rc_block || exit 1
-echo "  wired $RC_FILE"
+echo "  wired: ${RC_FILES[*]}"
 
 if [ "$DO_ARM" -eq 1 ]; then
     "$GUARD_DIR/claude-reblock" >/dev/null 2>&1 || true
@@ -714,6 +770,26 @@ done
 bash -n "$GUARD_DIR/claude" 2>/dev/null || { echo "Generated shim has a syntax error."; FAIL=1; }
 bash -n "$GUARD_DIR/claude-guard-common.sh" 2>/dev/null || { echo "Generated library has a syntax error."; FAIL=1; }
 
+# Does `claude` actually reach the guard? Resolution only -- `command -v` in a
+# login+interactive shell, which is the combination that reads every startup
+# file. Nothing is executed. This check exists because a guard that is on PATH
+# but not FIRST looks perfectly installed while being completely bypassed.
+RESOLVED_CLAUDE="$(bash -lic 'command -v claude' 2>/dev/null | tail -1)"
+if [ -n "$RESOLVED_CLAUDE" ]; then
+    if [ "$RESOLVED_CLAUDE" = "$GUARD_DIR/claude" ]; then
+        echo "Verified: in a new login shell, 'claude' resolves to the guard."
+    else
+        echo "Verification FAILED: in a login shell 'claude' resolves to"
+        echo "  $RESOLVED_CLAUDE"
+        echo "  instead of $GUARD_DIR/claude -- something later on PATH shadows the guard."
+        echo "  Startup files wired: ${RC_FILES[*]}"
+        FAIL=1
+    fi
+else
+    echo "Note: could not resolve 'claude' in a test login shell; check manually with"
+    echo "  bash -lic 'command -v claude'"
+fi
+
 # The allowlist has to accept the repository it was derived from. Checked by
 # sourcing the generated library, which never launches Claude Code.
 if [ -n "$ORIGIN_URL" ]; then
@@ -732,7 +808,7 @@ if [ "$FAIL" -ne 0 ]; then
 fi
 
 echo ""
-echo "Done. Open a new terminal (or: source $RC_FILE)."
+echo "Done. Open a new terminal."
 echo ""
 if [ -e "$DISABLE_FLAG" ]; then
     echo "  The kill switch is ARMED: 'claude' refuses in every directory."

@@ -149,12 +149,33 @@ is not on the list:
 | `~/.claude/claude-code-disabled` | present while the kill switch is armed |
 | `~/.claude/claude-run-leases/<pid>` | marks a live `claude-run` session |
 | `~/.bashrc` (or `~/.zshrc`) | one block between `>>> lazy claude.guard >>>` markers |
+| `~/.profile` / `~/.bash_profile` | the same block, when bash is the shell (see below) |
 
 The startup block does three things: it puts the guard directory first on
 `PATH`, drops any stale `claude` shell function, and calls `claude-reblock -q`.
 
 `PATH`, not an alias or a shell function, so `command claude`, `\claude` and
 non-interactive child shells go through the guard too.
+
+Under bash the block is written to the login file as well, not just `~/.bashrc`.
+Debian and Ubuntu ship a `~/.profile` that sources `~/.bashrc` **first** and
+prepends `~/.local/bin` **afterwards**, so a block living only in `~/.bashrc`
+runs too early and the real launcher ends up ahead of the guard. Whichever file
+runs last has to put the guard back in front. For the same reason the block
+prepends unless the guard is already *first*, rather than only when it is
+absent: an "add it if missing" test sees the guard somewhere on `PATH`, does
+nothing, and leaves it bypassed in every shell from then on. If neither
+`~/.profile` nor `~/.bash_profile` exists, `~/.profile` is created, because a
+bash login shell with no login file never reads `~/.bashrc` at all.
+
+After installing, the command checks what `claude` actually resolves to in a
+login shell and says so. A guard that is on `PATH` but not first looks
+perfectly installed while being completely bypassed, so this is verified rather
+than assumed:
+
+```
+Verified: in a new login shell, 'claude' resolves to the guard.
+```
 
 Nothing is installed with `sudo` and nothing outside your home directory is
 touched. Re-running the command is safe: the startup block is replaced rather
